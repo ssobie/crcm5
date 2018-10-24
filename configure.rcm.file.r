@@ -18,13 +18,39 @@ convert.variable <- function(varname,data) {
                vas=data*0.5144,
                tasmax=data-273,
                tasmin=data-273,
+               tas=data-273,
                pr=data/8,
                psl=data,
+               ps=data,
                snd=data,
                snc=data,
-               traf=data,       
-               tdra=data,
-               stfl=data) 
+               runoff=data,       
+               discharge=data,
+               streamflow=data,
+               drainage=data,
+               gz=data*10,
+               insol=data,
+               huss=data,       
+               rhs=data,        
+               irflux=data,
+               latflux=data,    
+               giac=data,
+               giml=data,
+               gld=data,
+               glf=data,
+               gsab=data,
+               gsac=data,
+               gsml=data,
+               gvol=data,
+               gwst=data,
+               swater=data,
+               sice=data,
+               spw=data,
+               smass=data,
+               smelt=data,      
+               asp=data/8,
+               swlake=data,
+               swriver=data)
 
   return(rv)               
 }
@@ -187,16 +213,15 @@ move.data.to.new.file <- function(gcm,varname,
                            cal=time.calendar)
   
   ##For Temperature (or similar daily quantities)
-  if (grepl('tas',new.var)) {
+  if (grepl('(tasm|giac|giml|gld|glf|gsab|gsac|gsml|gvol|swater|sice)',new.var)) {
     var.dates <- origin.pcict + time.values*86400
     yr.fac <- as.factor(format(var.dates,'%Y'))
     yrs <- levels(yr.fac)
-
+browser()
     ##Split into loop to handle memory issues effectively
     l.st <- seq(1,time.len,by=400)
     l.en <- c(seq(400,time.len,by=400),time.len)
     l.cnt <- l.en-l.st+1
-
     for (i in seq_along(l.st)) {
       print(paste0(i,' of ',length(l.st)))
       print(l.st[i])
@@ -204,10 +229,11 @@ move.data.to.new.file <- function(gcm,varname,
       ncvar_put(nc,varid=new.var,vals=aperm(var.subset,c(2,1,3)),
                 start=c(1,1,l.st[i]),count=c(-1,-1,l.cnt[i]))     
     }
-  }
-  
- ##For hourly quantities to be converted to daily (i.e. precipitation)
-  if (grepl('(pr|snd|snc|psl|uas|vas|traf|tdra|stfl)',new.var)) {
+  } else { 
+      ####For hourly quantities to be converted to daily (i.e. precipitation)
+      ##if (grepl('(pr|snd|snc|psl|uas|vas|runoff|discharge|drainage|
+      ##        streamflow|gz|insol|tas|huss|rhs|latflux|irflux|
+      ##        gwst|spw|smass|smelt|asp|ps|swlake|swriver)',new.var)) {
     var.dates <- origin.pcict + time.values*3600
     mn.fac <- as.factor(format(var.dates,'%Y-%m'))
     mns <- levels(mn.fac)       
@@ -227,7 +253,7 @@ move.data.to.new.file <- function(gcm,varname,
       var.subset <- convert.variable(new.var,var.raw)
 
       dy.fac <- as.factor(format(var.dates[ix],'%Y-%m-%d'))
-      
+
       var.agg <- apply(var.subset,c(1,2),function(x,y){tapply(x,y,mean)},dy.fac)
       dy.dates <- levels(dy.fac)
       d.st <- grep(dy.dates[1],day.dates)
@@ -259,9 +285,9 @@ if (1==1) {
   }
 }
 
-##  gcm <- 'ERAI'
-##  varname <- 'PN'
-##  interval <- '1980-2014'
+##  gcm <- 'CanESM2'
+##  varname <- 'T9'
+##  interval <- '1980-2050'
 ##  freq <- 'day'
 
 
@@ -275,13 +301,13 @@ if (1==1) {
   ##tmp.base <- tmpdir
   tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
   
-  data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/ERA-Interim/')
-  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/ERA-Interim/')
+  data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/')
+  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/',gcm,'/')
 
   if (!file.exists(tmp.base))
        dir.create(tmp.base,recursive=TRUE)
 
-  existing.file <- paste0('WC011_modified_',varname,'_',interval,'.nc')
+  existing.file <- paste0(gcm,'_WC011_modified_',varname,'_',interval,'.nc')
   print('Copying file to temp')
   file.copy(from=paste0(data.dir,existing.file),to=tmp.base,overwrite=TRUE)
 

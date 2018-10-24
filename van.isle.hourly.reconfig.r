@@ -76,8 +76,8 @@ correct.rcm.time.series <- function(nc,freq) {
 
   if (freq=='hour' & grepl('hour',time.units)) { ##Keep Hourly time units
      time.series <- origin.pcict + time.values*3600
-     feb.flag <- grep('*-02-29 *',time.series)
-     time.values[feb.flag] <- time.values[feb.flag] - 24
+     ##feb.flag <- grep('*-02-29 *',time.series)
+     ##time.values[feb.flag] <- time.values[feb.flag] - 24
      mulc <- 3600
   } 
 
@@ -104,12 +104,14 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
                                  tmp.base) {
 
   ##Vancouver Island Subset
-  lon.ix <- 115:155
-  lat.ix <- 85:125
-
+  ##lon.ix <- 115:155
+  ##lat.ix <- 85:125
+  ##BC Subset
+  lon.ix <- 100:200
+  lat.ix <- 79:230
 
   new.var <- get.new.var.name(varname)                                 
-
+  print(existing.file)
   nc <- nc_open(paste0(tmp.base,existing.file),write=FALSE)
 
   time.data <- correct.rcm.time.series(nc,freq) 
@@ -122,7 +124,7 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
                      CanESM2='CanESM2',
                      MPI='MPI')
 
-  write.file <- paste0(new.var,'_',freq,'_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
+  write.file <- paste0(new.var,'_',freq,'_BC_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
  
   ##Attributes to retain
   lon <- aperm(ncvar_get(nc,'lon'),c(2,1))
@@ -203,8 +205,11 @@ move.data.to.new.file <- function(gcm,varname,
                                   tmp.base) {
 
   ##Vancouver Island Subset
-  lon.ix <- 115:155
-  lat.ix <- 85:125
+  ##lon.ix <- 115:155
+  ##lat.ix <- 85:125
+  ##BC Subset
+  lon.ix <- 100:200
+  lat.ix <- 79:230
 
   new.var <- get.new.var.name(varname)                                 
 
@@ -231,7 +236,7 @@ move.data.to.new.file <- function(gcm,varname,
     var.dates <- origin.pcict + time.values*86400
     yr.fac <- as.factor(format(var.dates,'%Y'))
     yrs <- levels(yr.fac)
-browser()
+    browser()
     ##Split into loop to handle memory issues effectively
     l.st <- seq(1,time.len,by=400)
     l.en <- c(seq(400,time.len,by=400),time.len)
@@ -256,7 +261,8 @@ browser()
     mn.len <- length(mns)
     
     day.dates <- levels(as.factor(format(var.dates,'%Y-%m-%d')))
-    
+    dy.facs <- as.factor(format(var.dates,'%Y-%m-%d'))    
+
     ##Split into time-based loop to aggregate to daily
     for (i in seq_along(mns)) {
       ltm <- proc.time()
@@ -266,16 +272,17 @@ browser()
       l.cnt <- length(ix)
       print(var.dates[l.st])
 
-      var.raw <- ncvar_get(hist.nc,varname,start=c(85,115,1,l.st),count=c(41,41,1,l.cnt)) 
+      ##var.raw <- ncvar_get(hist.nc,varname,start=c(85,115,1,l.st),count=c(41,41,1,l.cnt)) 
+      var.raw <- ncvar_get(hist.nc,varname,start=c(79,100,1,l.st),count=c(152,101,1,l.cnt))         
       var.subset <- convert.variable(new.var,var.raw)
-
-      dy.fac <- as.factor(format(var.dates[ix],'%Y-%m-%d'))
+ 
+      ###dy.fac <- as.factor(format(var.dates[ix],'%Y-%m-%d'))
 
       ##var.agg <- apply(var.subset,c(1,2),function(x,y){tapply(x,y,mean)},dy.fac)
-      dy.dates <- levels(dy.fac)
-      d.st <- grep(dy.dates[1],day.dates)
-      print(d.st)
-      d.cnt <- length(dy.dates)
+      ###dy.dates <- levels(dy.fac)
+      ###d.st <- grep(dy.dates[1],day.dates)
+      ###print(d.st)
+      ###d.cnt <- length(dy.dates)
 
       ncvar_put(nc,varid=new.var,vals=aperm(var.subset,c(2,1,3)),
                 start=c(1,1,l.st),count=c(-1,-1,l.cnt))     
@@ -303,13 +310,13 @@ if (1==1) {
   }
 }
 
-###  gcm <- 'CanESM2'
-###  varname <- 'TJ'
-###  interval <- '1980-2014'
-###  freq <- 'hour'
+##  gcm <- 'MPI'
+##  varname <- 'N4'
+##  interval <- '1980-2050'
+##  freq <- 'hour'
 
 
-##  write.file <- 'tasmax_day_WC011_ERA-Interim+CRCM5_historical+rcp85_198001-20141231.nc'  
+##  write.file <- 'tasmax_day_BC_WC011_ERA-Interim+CRCM5_historical+rcp85_198001-20141231.nc'  
 
   rcp <- "+rcp85"
   if (gcm=='ERAI') {
@@ -319,13 +326,15 @@ if (1==1) {
   ##tmp.base <- tmpdir
   tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
   
-  data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/CanESM2/')
+  data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/')
+  ##data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/ERA-Interim/')
   write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/')
 
   if (!file.exists(tmp.base))
        dir.create(tmp.base,recursive=TRUE)
 
-  existing.file <- paste0('CanESM2_WC011_modified_',varname,'_',interval,'.nc')
+  existing.file <- paste0('MPI_WC011_modified_',varname,'_',interval,'.nc') ##gcm,'_
+  print(existing.file)
   print('Copying file to temp')
   file.copy(from=paste0(data.dir,existing.file),to=tmp.base,overwrite=TRUE)
 
@@ -336,6 +345,7 @@ if (1==1) {
                                      existing.file,
                                      tmp.base)
   print('made new file')
+  print(write.file)
   print('Moving data')
 
   move.data.to.new.file(gcm,varname,

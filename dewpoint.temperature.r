@@ -23,6 +23,7 @@ dew.point.temp <- function(psl,huss) {
 
      ##Dry bulb temp
      temp.dew <- (1/T.zero - ((R.vapor/lh.vape) * log(vape.press/sat.vape)))^-1
+
      return(temp.dew - 273)
 }
 
@@ -50,7 +51,7 @@ make.new.dwpt.file <- function(gcm,freq,rcp,
                      CanESM2='CanESM2',
                      MPI='MPI')
 
-  write.file <- paste0(new.var,'_',freq,'_WC011_',gcm.name,'+CRCM5_historical+',rcp,'_',yst,'-',yen,'.nc')
+  write.file <- paste0(new.var,'_',freq,'_BC_WC011_',gcm.name,'+CRCM5_historical+',rcp,'_',yst,'-',yen,'.nc')
 
   ##Attributes to retain
   lon <- ncvar_get(nc,'lon')
@@ -96,6 +97,9 @@ make.new.dwpt.file <- function(gcm,freq,rcp,
   lat.names <- names(standard.atts$lat)
   for (j in 1:length(standard.atts$lat))
     ncatt_put(hist.nc,varid='lat',attname=lat.names[j],attval=standard.atts$lat[[j]])
+  ncvar_put(hist.nc,'lon',lon)
+  ncvar_put(hist.nc,'lat',lat)
+
   print('RLon names')
   rlon.names <- names(standard.atts$rlon)
   for (j in 1:length(standard.atts$rlon))
@@ -160,7 +164,7 @@ calculate.dewpoint.temp <- function(psl.file,huss.file,dewpoint.file,tmp.base) {
                        psl=psl.list,                 
                        huss=huss.list,                 
                        .export=c('dew.point.temp')
-                             ) %do% {
+                             ) %dopar% {
                                 objects <- dew.point.temp(psl=psl,huss=huss)
                                     }
     dwpt.matrix <- matrix(unlist(dewpoints),nrow=n.lon,ncol=n.time,byrow=T)
@@ -188,7 +192,7 @@ if (1==1) {
 ##gcm <- 'ERAI'
 ##tmpdir <- '/local_temp/ssobie/crcm5/'
 
-read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/'
+read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/hourly/'
 tmp.dir <- tmpdir
 print(tmp.dir)
 print(tmpdir)
@@ -196,10 +200,8 @@ if (!file.exists(tmpdir)) {
   dir.create(tmpdir,recursive=T)
 }
 
-psl.file <- 'psl_hour_WC011_MPI+CRCM5_historical+rcp85_19800101-20501231.nc'
-huss.file <- 'huss_hour_WC011_MPI+CRCM5_historical+rcp85_19800101-20501231.nc'
-
-
+psl.file <- paste0('psl_hour_BC_WC011_',gcm,'+CRCM5_historical+rcp85_19800101-20501231.nc')
+huss.file <- paste0('huss_hour_BC_WC011_',gcm,'+CRCM5_historical+rcp85_19800101-20501231.nc')
 
 if (1==1) {
 print('Copying PSL file')

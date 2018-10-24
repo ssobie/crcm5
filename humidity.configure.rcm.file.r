@@ -11,7 +11,6 @@ library(udunits2)
 source('/storage/home/ssobie/code/repos/crcm5/add.crcm5.metadata.r',chdir=T)
 ##--------------------------------------------------------------
 
-
 correct.rcm.time.series <- function() {
   time.calendar <- "proleptic_gregorian"                        
   time.units <- "hours since 1980-01-01 00:00:00"   
@@ -32,8 +31,12 @@ correct.rcm.time.series <- function() {
 make.new.netcdf.file <- function(gcm,varname,freq,rcp,
                                  existing.file,
                                  tmp.base) {
-  lon.ix <- 115:155
-  lat.ix <- 85:125
+  ##Vancouver Island Subset
+  ##lon.ix <- 115:155
+  ##lat.ix <- 85:125
+  ##BC Subset
+  lon.ix <- 100:200
+  lat.ix <- 79:230
 
   new.var <- get.new.var.name(varname)                                 
 
@@ -49,7 +52,7 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
                      CanESM2='CanESM2',
                      MPI='MPI')
 
-  write.file <- paste0(new.var,'_',freq,'_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
+  write.file <- paste0(new.var,'_',freq,'_BC_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
  
   ##Attributes to retain
   lon <- aperm(ncvar_get(nc,'lon'),c(2,1))
@@ -159,7 +162,9 @@ move.data.to.new.file <- function(gcm,varname,nc,
   ix <- which(full.series$series %in% time.series)
   ist <- ix[1]
   icnt <- tail(ix,1)-ist + 1
-  var.subset <- ncvar_get(hist.nc,varname,start=c(85,115,1,1),count=c(41,41,1,-1))
+  ###var.subset <- ncvar_get(hist.nc,varname,start=c(85,115,22,1),count=c(41,41,1,-1))
+  var.subset <- ncvar_get(hist.nc,varname,start=c(79,100,22,1),count=c(152,101,1,-1))
+
   ncvar_put(nc,varid=new.var,vals=aperm(var.subset,c(2,1,3)),
             start=c(1,1,ist),count=c(-1,-1,icnt))     
   nc_close(hist.nc)  
@@ -191,18 +196,18 @@ if (1==1) {
   ##tmp.base <- tmpdir
   tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
   
-  data.dir <- paste0('/storage/data/climate/downscale/CMIP5_delivery/CRCM5/CanESM2/',varname,'/')
-  ##data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/CanESM2/HU/')
-  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/')
+  data.dir <- paste0('/storage/data/climate/downscale/CMIP5_delivery/CRCM5/MPI/',varname,'/')
+  ##data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/',varname,'/')
+  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/hourly/')
 
   if (!file.exists(tmp.base))
        dir.create(tmp.base,recursive=TRUE)
 
-  starting.file <- 'CanESM2_WC011_modified_T5_1980-2050.nc'
+  starting.file <- paste0(gcm,'_WC011_modified_T5_1980-2050.nc')
 
   print('Copying file to temp')
-  print(paste0('/storage/data/climate/downscale/RCM/CRCM5/CanESM2/',starting.file))
-  file.copy(from=paste0('/storage/data/climate/downscale/RCM/CRCM5/CanESM2/',starting.file),to=tmp.base,overwrite=TRUE)
+  print(paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/',starting.file))
+  file.copy(from=paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/',starting.file),to=tmp.base,overwrite=TRUE)
 
   ##-------------------------------------------------    
   ##Past File           

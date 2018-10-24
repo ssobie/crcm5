@@ -35,12 +35,12 @@ find.closest.month <- function(month,data,mon.ts,mon.indices,yrs,trys) {
 
 ##----------------------------------------------------------------------------------------------
 
-var.name <- 'wspd'
+var.name <- 'insol'
 coord.ix <- c(10,10)
 
 read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/'
 
-load('/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/try.years.from.daily.RData')
+load('/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/cwec.tmy.years.from.daily.RData')
 
 
 data.file <- paste0(read.dir,var.name,'_hour_WC011_ERA-Interim+CRCM5_historical_19800101-20141231.nc')
@@ -72,7 +72,7 @@ for (i in 1:ymlen) {
 par(mfrow=c(3,4))
 
 series <- ncvar_get(nc,var.name,start=c(coord.ix,1),count=c(1,1,-1))
-trys <- try.years[coord.ix[1],coord.ix[2],]
+trys <- tmy.years[coord.ix[1],coord.ix[2],]
 
 yr.match <- unlist(lapply(months,find.closest.month,series,mon.ts,mon.indices,yrs,trys) )
 

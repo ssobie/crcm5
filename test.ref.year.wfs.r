@@ -11,12 +11,7 @@ library(data.table)
 
 source('/storage/data/projects/rci/stat.downscaling/bccaq2/code/new.netcdf.calendar.R',chdir=T)
 
-find.all.months <- function(months,data,mon.ts,mon.indices,yrs) { 
-  rv <- rep(0,length(months))
-  for (m in seq_along(months)) {
-    month <- months[m]
-    mon.ix <- mon.indices[,m]
-    mon.vl <- which(mon.ix)  
+fs.stat <- function(data,mon.ix,yrs,mon.vl,mon.ts,month) {
     mon.data <- data[mon.ix]
     long.cdf <- ecdf(mon.data)
 
@@ -27,27 +22,52 @@ find.all.months <- function(months,data,mon.ts,mon.indices,yrs) {
       short.cdf <- ecdf(yr.mon)
       cdf.diffs[i] <- mean(abs(long.cdf(yr.mon) - short.cdf(yr.mon)))
     }
-    rv[m] <- yrs[which.min(cdf.diffs)]
+  return(cdf.diffs)
+}
+
+
+find.all.months <- function(months,tas,insol,rhs,mon.ts,mon.indices,yrs) { 
+  rv <- matrix(0,nrow=length(months),ncol=3)
+  for (m in seq_along(months)) {
+    month <- months[m]
+    mon.ix <- mon.indices[,m]
+    mon.vl <- which(mon.ix)  
+    tas.mon.data <- tas[mon.ix]
+    insol.mon.data <- insol[mon.ix]
+    rhs.mon.data <- rhs[mon.ix]
+
+    tas.cdf.diffs <- fs.stat(tas,mon.ix,yrs,mon.vl,mon.ts,month)
+    insol.cdf.diffs <- fs.stat(insol,mon.ix,yrs,mon.vl,mon.ts,month)
+    rhs.cdf.diffs <- fs.stat(rhs,mon.ix,yrs,mon.vl,mon.ts,month)
+
+    fs.sum <- tas.cdf.diffs + insol.cdf.diffs + rhs.cdf.diffs
+    rv[m,] <- (yrs[order(fs.sum)])[1:3] ##yrs[which.min(fs.sum)]
   }
   return(rv)
 }
 
 ##----------------------------------------------------------------------------------------------
 
-find.test.ref.years <- function(var.name,var.file) {
+find.test.ref.years <- function(tas.file,insol.file,rhs.file) {
 
   months <- sprintf('%02d',1:12)
   mlen <- length(months)
 
-  input.nc <- nc_open(var.file)
-  time <- netcdf.calendar(input.nc)
+  tas.nc <- nc_open(tas.file)
+  insol.nc <- nc_open(insol.file)
+  rhs.nc <- nc_open(rhs.file)
+
+  time <- netcdf.calendar(tas.nc)
   mon.ts <- format(time,'%Y-%m')
   mon.fac <- format(time,'%m')
   yrs <- levels(as.factor(format(time,'%Y')))
-  n.lat <- input.nc$dim$rlat$len ##Latitude Length
-  n.lon <- input.nc$dim$rlon$len ##Longitude Length
-  n.time <- input.nc$dim$time$len ##Longitude Length
-  years.array <- array(0,c(n.lon,n.lat,mlen))
+  n.lat <- tas.nc$dim$rlat$len ##Latitude Length
+  n.lon <- tas.nc$dim$rlon$len ##Longitude Length
+  n.time <- tas.nc$dim$time$len ##Longitude Length
+
+  year.one.array <- array(0,c(n.lon,n.lat,mlen))
+  year.two.array <- array(0,c(n.lon,n.lat,mlen))
+  year.three.array <- array(0,c(n.lon,n.lat,mlen))
 
   mon.indices <- matrix(NA,nrow=n.time,ncol=mlen)
   for (i in 1:mlen) {
@@ -63,20 +83,39 @@ find.test.ref.years <- function(var.name,var.file) {
 
   for (j in 1:n.lat) { 
     print(paste0('Latitude: ',j,' of ',n.lat))
-    input.subset <- ncvar_get(input.nc,var.name,start=c(1,j,1),count=c(-1,1,-1))
-    input.list <- lapply(seq_len(nrow(input.subset)), function(k) input.subset[k,])
-    rm(input.subset)
+
+    tas.subset <- ncvar_get(tas.nc,'tas',start=c(1,j,1),count=c(-1,1,-1))
+    tas.list <- lapply(seq_len(nrow(tas.subset)), function(k) tas.subset[k,])
+    rm(tas.subset)
+    insol.subset <- ncvar_get(insol.nc,'insol',start=c(1,j,1),count=c(-1,1,-1))
+    insol.list <- lapply(seq_len(nrow(insol.subset)), function(k) insol.subset[k,])
+    rm(insol.subset)
+    rhs.subset <- ncvar_get(rhs.nc,'rhs',start=c(1,j,1),count=c(-1,1,-1))
+    rhs.list <- lapply(seq_len(nrow(rhs.subset)), function(k) rhs.subset[k,])
+    rm(rhs.subset)
 
     years.slct <- foreach(
-                  input=input.list,                 
+                  tas=tas.list,                 
+                  insol=insol.list,
+                  rhs=rhs.list,
                   .export=c('find.all.months','months','mon.ts','mon.indices','yrs')
                            ) %dopar% {
-                              objects <- find.all.months(months=months,data=input,mon.ts=mon.ts,mon.indices=mon.indices,yrs=yrs)
+                              objects <- find.all.months(months=months,tas=tas,insol=insol,rhs=rhs,mon.ts=mon.ts,mon.indices=mon.indices,yrs=yrs)
                          }
-    years.matrix <- matrix(unlist(years.slct),nrow=n.lon,ncol=length(months),byrow=T)
-    years.array[,j,] <- years.matrix  
+    year.one.list <- lapply(years.slct,function(x){return(x[,1])}) 
+    year.one.matrix <- matrix(unlist(year.one.list),nrow=n.lon,ncol=length(months),byrow=T)
+    year.one.array[,j,] <- year.one.matrix  
+
+    year.two.list <- lapply(years.slct,function(x){return(x[,2])}) 
+    year.two.matrix <- matrix(unlist(year.two.list),nrow=n.lon,ncol=length(months),byrow=T)
+    year.two.array[,j,] <- year.two.matrix  
+
+    year.three.list <- lapply(years.slct,function(x){return(x[,3])}) 
+    year.three.matrix <- matrix(unlist(year.three.list),nrow=n.lon,ncol=length(months),byrow=T)
+    year.three.array[,j,] <- year.three.matrix  
   }
-  nc_close(input.nc)
+  nc_close(tas.nc)
+  years.array <- list(one=year.one.array,two=year.two.array,three=year.three.array)
   return(years.array)
 }
 
@@ -189,7 +228,7 @@ if (1==1) {
 
 ##gcm <- 'ERAI'
 
-read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/ERA-Interim/'
+read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/'
 ##tmpdir <- '/local_temp/ssobie/crcm5/'
 tmp.dir <- tmpdir
 
@@ -204,24 +243,26 @@ rhs.file <- 'rhs_day_WC011_ERA-Interim+CRCM5_historical_19800101-20141231.nc'
 if (1==1) {
 print('Copying TAS file')
 file.copy(from=paste0(read.dir,tas.file),to=tmp.dir,overwrite=T)
-tas.years   <- find.test.ref.years('tas',paste0(tmp.dir,tas.file))
-save(tas.years,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/tas.years.RData')
-file.remove(paste0(tmp.dir,tas.file))
-print('Done with TAS')
-
 print('Copying INSOL file')
 file.copy(from=paste0(read.dir,insol.file),to=tmp.dir,overwrite=T)
-insol.years <- find.test.ref.years('insol',paste0(tmp.dir,insol.file))
-save(insol.years,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/insol.years.RData')
-file.remove(paste0(tmp.dir,insol.file))
-print('Done with INSOL')
-
 print('Copying RHS file')
 file.copy(from=paste0(read.dir,rhs.file),to=tmp.dir,overwrite=T)
-rhs.years   <- find.test.ref.years('rhs',paste0(tmp.dir,rhs.file))
-save(rhs.years,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/rhs.years.RData')
+
+primary.years   <- find.test.ref.years(paste0(tmp.dir,tas.file),paste0(tmp.dir,insol.file),paste0(tmp.dir,rhs.file))
+years.one <- primary.years$one
+save(years.one,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/years.one.from.daily.RData')
+years.two <- primary.years$two
+save(years.two,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/years.two.from.daily.RData')
+years.three <- primary.years$three
+save(years.three,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/years.three.from.daily.RData')
+
+file.remove(paste0(tmp.dir,tas.file))
+print('Done with TAS')
+file.remove(paste0(tmp.dir,insol.file))
+print('Done with INSOL')
 file.remove(paste0(tmp.dir,rhs.file))
 print('Done with RHS')
+
 }
 
 
@@ -233,9 +274,9 @@ vas.file <- 'vas_day_WC011_ERA-Interim+CRCM5_historical_19800101-20141231.nc'
 file.copy(from=paste0(read.dir,uas.file),to=tmp.dir,overwrite=T)
 file.copy(from=paste0(read.dir,vas.file),to=tmp.dir,overwrite=T)
 
-try.years   <- wind.trys(tas.years,insol.years,rhs.years,
+try.years   <- wind.trys(years.one,years.two,years.three,
                          paste0(tmp.dir,uas.file),paste0(tmp.dir,vas.file))
-save(try.years,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/try.years.RData')
+save(try.years,file='/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/year_data/try.years.from.daily.RData')
 file.remove(paste0(tmp.dir,uas.file))
 file.remove(paste0(tmp.dir,vas.file))
 

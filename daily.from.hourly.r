@@ -1,30 +1,71 @@
 ##Script to convert hourly Van Isle files to daily
 
-gcm <- 'MPI'
+make.daily.tmy <- function(gcm,avg.list,fxn) {
 
-read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/'
-write.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/daily/'
+  ##gcm <- 'MPI'
+  ##avg.list <- c('insol','rhs','tas','wspd','dewpoint') ##MEAN
+  ##avg.list <- c('tas','wspd','dewpoint') ##MAX
+  ##avg.list <- c('tas','dewpoint') ##MIN
+  ##avg.list <- 'insol' ##Sum
+  ##fxn <- 'sum'
 
-avg.list <- c('insol','irflux','psl','rhs','tas','uas','vas')
+  read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/tmy_files/'
+  write.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/tmy_files/daily/'
 
-all.files <- list.files(path=read.dir,pattern=gcm) 
+  all.files <- list.files(path=read.dir,pattern=gcm) 
 
-##Aggregate by averaging
-for (var.name in avg.list) {
-  input.file <- all.files[grep(var.name,all.files)]
-  output.file <- gsub('hour','day',input.file)
-  work <- paste0('cdo -O daymean ',read.dir,input.file,' ',write.dir,output.file)
-  print(work)
-  system(work)
+  ##Aggregate by averaging
+  for (var.name in avg.list) {
+      print(var.name)
+      tmy.files <- all.files[grep(paste0('^',var.name),all.files)]
+
+      past.file <- tmy.files[grep('2010',tmy.files)]
+      output.past <- gsub(paste0(var.name,'_'),paste0(var.name,'_',fxn,'_day_'),past.file)
+      work <- paste0('cdo -O day',fxn,' ',read.dir,past.file,' ',write.dir,output.past)
+      ##system(work)
+
+      proj.file <- tmy.files[grep('2021',tmy.files)]
+      output.proj <- gsub(paste0(var.name,'_'),paste0(var.name,'_',fxn,'_day_'),proj.file)
+      work <- paste0('cdo -O day',fxn,' ',read.dir,proj.file,' ',write.dir,output.proj)
+      system(work)
+
+      morph.file <-  all.files[grep(paste0('morphed_',var.name),all.files)]
+      output.morph <- gsub(paste0(var.name,'_'),paste0(var.name,'_',fxn,'_day_'),morph.file)
+      work <- paste0('cdo -O day',fxn,' ',read.dir,morph.file,' ',write.dir,output.morph)
+##      system(work)
+  }
 }
 
-##Daily total precipitation
-input.file <- all.files[grep('pr',all.files)]
-output.file <- gsub('hour','day',input.file)
-work <- paste0('cdo -O daysum ',read.dir,input.file,' ',write.dir,output.file)
-print(work)
-system(work)
 
+make.daily.rcm <- function(gcm,avg.list,fxn) {
+
+  ##gcm <- 'MPI'
+  ##avg.list <- c('insol','rhs','tas','wspd','dewpoint') ##MEAN
+  ##avg.list <- c('tas','wspd','dewpoint') ##MAX
+  ##avg.list <- c('tas','dewpoint') ##MIN
+  ##avg.list <- 'insol' ##Sum
+  ##fxn <- 'sum'
+
+  read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/hourly/'
+  write.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/daily/'
+
+  all.files <- list.files(path=read.dir,pattern=gcm) 
+
+  ##Aggregate by averaging
+  for (var.name in avg.list) {
+      print(var.name)
+      rcm.file <- all.files[grep(paste0('^',var.name),all.files)]
+      output.rcm <- gsub(paste0(var.name,'_hour_'),paste0(var.name,'_',fxn,'_day_'),rcm.file)
+      work <- paste0('cdo -O day',fxn,' ',read.dir,rcm.file,' ',write.dir,output.rcm)
+      system(work)
+  }
+}
+
+
+
+##Windspeed
+if (1==0) {
+all.files <- list.files(path=read.dir,pattern=gcm) 
 ##Windspeed
 uas.file <- all.files[grep('uas',all.files)]
 vas.file <- all.files[grep('uas',all.files)]
@@ -57,3 +98,4 @@ file.remove(paste0(write.dir,'wspd2.nc'))
 file.remove(paste0(write.dir,'uas2.nc'))
 file.remove(paste0(write.dir,'vas2.nc'))
 
+}

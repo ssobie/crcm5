@@ -21,7 +21,7 @@ find.closest.month <- function(month,data,mon.ts,mon.indices,yrs) {
 
   cdf.diffs <- rep(0,length(yrs))
 
-##  plot(mon.data,long.cdf(mon.data))
+  plot(mon.data,long.cdf(mon.data))
 
   for (i in seq_along(yrs)) {
     ##yr.mon.ix <- grep(paste0(yrs[i],'-',month),mon.ts)
@@ -32,16 +32,16 @@ find.closest.month <- function(month,data,mon.ts,mon.indices,yrs) {
     yr.mon <- data[yr.mon.ix]
     short.cdf <- ecdf(yr.mon)
     cdf.diffs[i] <- mean(abs(long.cdf(yr.mon) - short.cdf(yr.mon)))
-##    points(yr.mon,short.cdf(yr.mon),col='blue')
+    points(yr.mon,short.cdf(yr.mon),col='blue')
   }
 
   rv <- yrs[which.min(cdf.diffs)]
 
-##  slct.ix <- mon.ts %in% paste0(rv,'-',month)
-##  slct.mon <- data[slct.ix]
-##  slct.cdf <- ecdf(slct.mon)
-##  points(mon.data,long.cdf(mon.data))
-##  points(slct.mon,slct.cdf(slct.mon),col='red')
+  slct.ix <- mon.ts %in% paste0(rv,'-',month)
+  slct.mon <- data[slct.ix]
+  slct.cdf <- ecdf(slct.mon)
+  points(mon.data,long.cdf(mon.data))
+  points(slct.mon,slct.cdf(slct.mon),col='red')
 
   return(rv)
 }
@@ -78,12 +78,12 @@ find.all.months <- function(months,data,mon.ts,mon.indices,yrs) {
 
 read.dir <- '/storage/data/climate/downscale/RCM/CRCM5/reconfig/hourly/'
 
-tas.file <- paste0(read.dir,'tas_hour_WC011_ERA-Interim+CRCM5_historical_19800101-20141231.nc')
+rhs.file <- paste0(read.dir,'rhs_hour_WC011_ERA-Interim+CRCM5_historical_19800101-20141231.nc')
 
 months <- sprintf('%02d',1:12)
 mlen <- length(months)
 
-nc <- nc_open(tas.file)
+nc <- nc_open(rhs.file)
 time <- netcdf.calendar(nc)
 mon.ts <- format(time,'%Y-%m')
 mon.fac <- format(time,'%m')
@@ -106,13 +106,13 @@ for (i in 1:ymlen) {
 
 
 
-##par(mfrow=c(3,4))
+par(mfrow=c(3,4))
 
-tas <- ncvar_get(nc,'tas',start=c(1,1,1),count=c(1,1,-1))
+rhs <- ncvar_get(nc,'rhs',start=c(1,1,1),count=c(1,1,-1))
 
-yr.match <- unlist(lapply(months,find.closest.month,tas,mon.ts,mon.indices,yrs) )
+yr.match <- unlist(lapply(months,find.closest.month,rhs,mon.ts,mon.indices,yrs) )
 
-##browser()
+browser()
 
 input.nc <- nc
 varname <- 'tas'
