@@ -142,12 +142,12 @@ generate_prism_offset <- function(lon,lat,epw.dir,prism.dir,new.location) {
    write.epw.file(epw.offset,epw$header,
                   paste0(epw.dir,'offsets/'),write.epw.file)
    print(write.epw.file)
-browser()
+
 }
 
 ##----------------------------------------------------------
 epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/'
-prism.dir <- '/storage/data/projects/rci/weather_files/PRISM/'
+prism.dir <- '/storage/data/projects/rci//'
 new.location <- '1st_and_Clark'
 
 test <- generate_prism_offset(-123.0774,49.2697,epw.dir,prism.dir,new.location)

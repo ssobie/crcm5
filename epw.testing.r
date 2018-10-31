@@ -4,7 +4,34 @@ library(ncdf4)
 library(PCICt)
 library(zoo)
 
-sub.by.time <- function(var.name,lonc,latc,interval,input.file,gcm,read.dir) {
+source('/storage/home/ssobie/code/repos/crcm5/read.write.epw.r',chdir=T)
+
+
+##------------------------------------------------------------------------------
+##Match for EPW fields
+
+get_field_index <- function(var.name) {
+
+   field.names <- c('year', 'month', 'day', 'hour', 'minute',
+      'data_source_and_uncertainty_flags', 'dry_bulb_temperature',
+      'dew_point_temperature', 'relative_humidity',
+      'atmospheric_station_pressure', 'extraterrestrial_horizontal_radiation',
+      'extraterrestrial_direct_normal_radition',
+      'horizontal_infrared_radiation_intensity', 'global_horizontal_radiation',
+      'direct_normal_radiation', 'diffuse_horizontal_radiation',
+      'global_horizontal_illuminance', 'direct_normal_illuminance',
+      'diffuse_horizontal_illuminance', 'zenith_luminance', 'wind_direction',
+      'wind_speed', 'total_sky_cover', 'opaque_sky_cover', 'visibility',
+      'ceiling_height', 'present_weather_observation', 'present_weather_codes',
+      'precipitable_water', 'aerosol_optical_depth', 'snow_depth',
+      'days_since_last_snowfall', 'albedo', 'liquid_precipitation_depth',
+      'liquid_precipitation_quantity')
+   ix <- grep(var.name,field.names)
+}
+
+##------------------------------------------------------------------------------
+
+sub_by_time <- function(var.name,lonc,latc,interval,input.file,gcm,read.dir) {
 
   print(input.file)              
   nc <- nc_open(paste(read.dir,gcm,'/',input.file,sep=''))
@@ -50,141 +77,186 @@ sub.by.time <- function(var.name,lonc,latc,interval,input.file,gcm,read.dir) {
   st <- head(grep(yrs[1],years),1)
   en <- tail(grep(yrs[2],years),1)
 
-  mon.data <- tapply(data[st:en],as.factor(format(new.series[st:en],'%m')),mean)
-
   nc_close(nc)
-  return(mon.data)
+  rv <- list(data=data[st:en],time=new.series[st:en])
+  return(rv)
 }
 
+##------------------------------------------------------------------------------
+
+make_average_series <- function(series,time,method,rlen=5,agg.fxn) {
+
+  factor <- switch(method,
+                   daily='%m-%d',
+                   monthly='%m',
+                   roll='%m-%d')
+
+  fac <- as.factor(format(time,factor))
+  agg.data <- tapply(series,fac,agg.fxn)
+  if (method=='roll') {
+    agg.data <- rollmean(agg.data,rlen,fill='extend')
+  }    
+  return(agg.data)
+}
+
+
+##------------------------------------------------------------------------------
+###Consider splitting this (and the other Belcher methods) into a separate script
+###so that modifications can be run elsewhere and not be confused.
+
+morph_dry_bulb_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,
+                                method,rlen=NULL,agg.fxn=mean) {
+
+   tas.ix <- get_field_index('dry_bulb_temperature')
+   epw.tas <- epw.present$data[,tas.ix]
+   dates <- as.Date(paste('1999',sprintf('%02d',epw.present$data[,2]),sprintf('%02d',epw.present$data[,3]),sep='-'))
+   dy.dates <- as.Date(unique(format(dates,'%Y-%m-%d')))
+
+   epw.agg.mean <- epw.daily.mean <- make_average_series(epw.tas,dates,method='daily',agg.fxn=mean)
+   epw.agg.max <- epw.daily.max <-  make_average_series(epw.tas,dates,method='daily',agg.fxn=max)
+   epw.agg.min <- epw.daily.min <-  make_average_series(epw.tas,dates,method='daily',agg.fxn=min)
+
+   epw.day.anoms <- epw.tas*0
+   ##Daily
+   for (d in 1:365) {
+      ix <- format(dates,'%j') == sprintf('%03d',d)
+      epw.day.anoms[ix] <- epw.tas[ix] - epw.daily.mean[d]
+   }
+   epw.agg.anoms <- epw.day.anoms
+
+   if (method == 'monthly') {
+     dy.dates <- as.Date(unique(format(dates,'%Y-%m-%d')))
+     epw.agg.mean <- make_average_series(epw.tas,dates,method='monthly',agg.fxn=mean)
+     epw.agg.max <-  make_average_series(epw.tas,dates,method='monthly',agg.fxn=max)
+     epw.agg.min <-  make_average_series(epw.tas,dates,method='monthly',agg.fxn=min)
+     for (d in seq_along(epw.agg.mean)) {
+        ix <- format(dates,'%m') == sprintf('%02d',d)
+        epw.agg.anoms[ix] <- epw.tas[ix] - epw.agg.mean[d]
+     }
+   }
+   if (method == 'roll') {
+     epw.agg.mean <- make_average_series(epw.tas,dates,method='roll',rlen=rlen,agg.fxn=mean)
+     epw.agg.max <-  make_average_series(epw.tas,dates,method='roll',rlen=rlen,agg.fxn=max)
+     epw.agg.min <-  make_average_series(epw.tas,dates,method='roll',rlen=rlen,agg.fxn=min)
+     for (d in 1:365) {
+        ix <- format(dates,'%j') == sprintf('%03d',d)
+        epw.agg.anoms[ix] <- epw.tas[ix] - epw.agg.mean[d]
+     }     
+   }
+
+   tlen <- length(epw.agg.mean)
+   
+   deltas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
+   alphas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
+
+   morphed.tas <- matrix(0,nrow=length(gcm.list),ncol=length(epw.tas*0))
+
+   for (g in seq_along(gcm.list)) {
+      gcm <- gcm.list[g]
+      scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern=scenario)
+      var.files <- scen.files[grep("tasmax",scen.files)]
+      past.tx.file <- var.files[grep("1951-2000",var.files)]
+      proj.tx.file <- var.files[grep("2001-2100",var.files)]
+
+      past.tx <- sub_by_time(var.name='tasmax',lonc=lon,latc=lat,
+                                  interval='1971-2000',
+                                  input.file=past.tx.file,gcm=gcm,read.dir=gcm.dir)
+      past.tx.agg <- make_average_series(past.tx$data,past.tx$time,
+                                         method,rlen,agg.fxn)
+
+      proj.tx <- sub_by_time(var.name='tasmax',lonc=lon,latc=lat,
+                                  interval='2041-2070',
+                                  input.file=proj.tx.file,gcm=gcm,read.dir=gcm.dir)
+      proj.tx.agg <- make_average_series(proj.tx$data,proj.tx$time,
+                                         method,rlen,agg.fxn)
+
+      var.files <- scen.files[grep("tasmin",scen.files)]
+      past.tn.file <- var.files[grep("1951-2000",var.files)]
+      proj.tn.file <- var.files[grep("2001-2100",var.files)]
+
+      past.tn <- sub_by_time(var.name='tasmin',lonc=lon,latc=lat,
+                             interval='1971-2000',
+                             input.file=past.tn.file,gcm=gcm,read.dir=gcm.dir)
+      past.tn.agg <- make_average_series(past.tn$data,past.tn$time,
+                                         method,rlen,agg.fxn)
+
+      proj.tn <- sub_by_time(var.name='tasmin',lonc=lon,latc=lat,
+                             interval='2041-2070',
+                             input.file=proj.tn.file,gcm=gcm,read.dir=gcm.dir)
+      proj.tn.agg <- make_average_series(proj.tn$data,proj.tn$time,
+                                         method,rlen,agg.fxn)
+
+      ##
+      delta_tasmax <- proj.tx.agg - past.tx.agg
+      delta_tasmin <- proj.tn.agg - past.tn.agg
+      delta_tas <- (proj.tx.agg+proj.tn.agg)/2 - (past.tx.agg+past.tn.agg)/2
+      deltas[g,] <- delta_tas
+      past_tas <- (past.tx.agg+past.tn.agg)/2
+      print('Delta')
+      print(delta_tas)
+
+      alpha <- (delta_tasmax - delta_tasmin) / (epw.agg.max - epw.agg.min)
+      print('Alpha')
+      print(alpha)        
+      alphas[g,] <- alpha 
+
+
+      if (method=='daily' | method =='roll') {
+        for (d in 1:tlen) {
+           ix <- format(dates,'%j') == sprintf('%03d',d)  
+           morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[d] + alpha[d]*epw.agg.anoms[ix]
+           ##morphed.tas[g,ix] <- deltas[g,m] + alphas[g,m]*epw.agg.anoms[ix]
+        }
+      }
+
+      if (method=='monthly') {
+        for (m in 1:tlen) {
+           ix <- format(dates,'%m') == sprintf('%02d',m)  
+           morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[m] + alpha[m]*epw.agg.anoms[ix]
+           ##morphed.tas[g,ix] <- deltas[g,m] + alphas[g,m]*epw.agg.anoms[ix]
+        }
+      }
+
+   }##GCM loop
+
+   ens.deltas <- apply(deltas,2,mean)
+   ens.alphas <- apply(alphas,2,mean)
+   ens.morphed.tas <- apply(morphed.tas,2,mean)
+   epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
+   return(epw.present)   
+}
+
+##------------------------------------------------------------------------------
 
 ##**************************************************************************************
 
-epw.dir <- '/storage/home/ssobie/code/repos/bc-projected-weather/bcweather/tests/data/' 
-present.epw.file <- 'CAN_BC_ABBOTSFORD-A_1100031_CWEC.epw'
-future.epw.file <- 'abbotsford_test.epw'
-
-epw.present.data <- read.csv(paste0(epw.dir,present.epw.file),skip=8,header=F,as.is=T)
-epw.future.data <- read.csv(paste0(epw.dir,future.epw.file),skip=8,header=F,as.is=T)
-
-##Create one year of daily dates
-dates <- as.Date(paste('1999',sprintf('%02d',epw.present.data[,2]),sprintf('%02d',epw.present.data[,3]),sep='-'))
-
-epw.daily.mean <- tapply(epw.present.data[,7],as.factor(format(dates,'%m-%d')),mean)
-epw.daily.max <- tapply(epw.present.data[,7],as.factor(format(dates,'%m-%d')),max)
-epw.daily.min <- tapply(epw.present.data[,7],as.factor(format(dates,'%m-%d')),min)
-
-dy.dates <- as.Date(unique(format(dates,'%Y-%m-%d')))
-
-epw.mon.mean <- tapply(epw.daily.mean,as.factor(format(dy.dates,'%m')),mean)
-epw.mon.max <- tapply(epw.daily.max,as.factor(format(dy.dates,'%m')),mean)
-epw.mon.min <- tapply(epw.daily.min,as.factor(format(dy.dates,'%m')),mean)
-
-epw.day.anoms <- epw.present.data[,7]*0
-
-for (d in 1:365) {
-   ix <- format(dates,'%j') == sprintf('%03d',d)  
-   epw.day.anoms[ix] <- epw.present.data[ix,7] - epw.daily.mean[d]
-}
-
-ix <- 7
-
-plot.dir <- '/storage/data/projects/rci/data/cas/wx_files/'
-plot.file <- paste0(plot.dir,'abbotsford.epw.tas.jan.png')
-
-if (1==0) {
-png(plot.file,width=1200,height=400)
-par(mar=c(4.5,4.5,4,2))
-
-plot(1:31,epw.daily.mean[1:31],type='l',lwd=4,xlab='Julian Day',ylab='Daily Mean Temperature (\u00B0C)',
-     cex.main=2,cex.lab=1.5,cex.axis=1.5,main='Abbotsford Weather File January Temperature')
-abline(h=0,col='gray')
-lines(1:31,epw.daily.mean[1:31],lwd=4)
-
-box(which='plot')
-dev.off()
-}
-
-if (1==0) {
+scenario <- 'rcp85'
 
 lon <- -122.36
 lat <- 49.03
 
+##'/storage/home/ssobie/code/repos/bc-projected-weather/bcweather/tests/data/' 
+
+epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/offsets/'
+write.dir <- '/storage/data/projects/rci/weather_files/wx_files/morphed_files/'
+present.epw.file <- 'CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
+future.epw.file <- 'MORPHED_ROLL21_TAS_CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
+
+epw.present <- read.epw.file(epw.dir,present.epw.file)
+
+##Create one year of daily dates
+
 gcm.dir <- '/storage/data/climate/downscale/BCCAQ2+PRISM/high_res_downscaling/bccaq_gcm_bc_subset/'
 
-gcm.list <- c('ACCESS1-0',
-              'CanESM2',
-              'CCSM4',
-              'CNRM-CM5',
-              'CSIRO-Mk3-6-0',
-              'GFDL-ESM2G',
-              'HadGEM2-CC',
-              'HadGEM2-ES',
-              'inmcm4',
-              'MIROC5',
-              'MPI-ESM-LR',
-              'MRI-CGCM3')
+gcm.list <- c('ACCESS1-0','CanESM2','CCSM4','CNRM-CM5','CSIRO-Mk3-6-0','GFDL-ESM2G',
+              'HadGEM2-CC','HadGEM2-ES','inmcm4','MIROC5','MPI-ESM-LR','MRI-CGCM3')
 
-deltas <- matrix(0,nrow=12,ncol=12)
-alphas <- matrix(0,nrow=12,ncol=12)
+epw.morphed.tas <- morph_dry_bulb_temp(epw.present,lon,lat,gcm.list,gcm.dir,scenario,method='roll',rlen=21)
 
-for (g in seq_along(gcm.list)) {
-    gcm <- gcm.list[g]
-    scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern='rcp85')
-    var.files <- scen.files[grep("tasmax",scen.files)]
-    past.tx.file <- var.files[grep("1951-2000",var.files)]
-    proj.tx.file <- var.files[grep("2001-2100",var.files)]
+write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file)
 
-    print('Past TASMAX')
-    past.tx.data <- sub.by.time(var.name='tasmax',lonc=lon,latc=lat,
-                            interval='1971-2000',
-                            input.file=past.tx.file,gcm=gcm,read.dir=gcm.dir)
-    print('Proj TASMAX')
-    proj.tx.data <- sub.by.time(var.name='tasmax',lonc=lon,latc=lat,
-                            interval='2041-2070',
-                            input.file=proj.tx.file,gcm=gcm,read.dir=gcm.dir)
+browser()
 
-    var.files <- scen.files[grep("tasmin",scen.files)]
-    past.tn.file <- var.files[grep("1951-2000",var.files)]
-    proj.tn.file <- var.files[grep("2001-2100",var.files)]
-
-    print('Past TASMIN')
-    past.tn.data <- sub.by.time(var.name='tasmin',lonc=lon,latc=lat,
-                            interval='1971-2000',
-                            input.file=past.tn.file,gcm=gcm,read.dir=gcm.dir)
-    print('Proj TASMIN')
-    proj.tn.data <- sub.by.time(var.name='tasmin',lonc=lon,latc=lat,
-                            interval='2041-2070',
-                            input.file=proj.tn.file,gcm=gcm,read.dir=gcm.dir)
-
-    delta_tasmax <- proj.tx.data - past.tx.data
-    delta_tasmin <- proj.tn.data - past.tn.data
-    delta_tas <- (proj.tx.data+proj.tn.data)/2 - (past.tx.data+past.tn.data)/2
-    deltas[g,] <- delta_tas
-    print('Delta')
-    print(delta_tas)
-
-    alpha <- (delta_tasmax - delta_tasmin) / (epw.mon.max - epw.mon.min)
-    print('Alpha')
-    print(alpha)        
-    alphas[g,] <- alpha
-}
-
-}
-
-
-ens.deltas <- apply(deltas,2,mean)
-ens.alphas <- apply(alphas,2,mean)
-
-##morphed.tas <- epw.present.data[,7]*0
-morphed.tas <- matrix(0,nrow=12,ncol=length(epw.present.data[,7]*0))
-
-for (g in 1:12) {
-  for (m in 1:12) {
-     ix <- format(dates,'%m') == sprintf('%02d',m)  
-     morphed.tas[g,ix] <- epw.present.data[ix,7] + deltas[g,m] + alphas[g,m]*epw.day.anoms[ix]
-     ##morphed.tas[g,ix] <- deltas[g,m] + alphas[g,m]*epw.day.anoms[ix]
-  }
-}
 
 daily.morphed.tas <- t(apply(morphed.tas,1,function(x,dates){tapply(x,as.factor(format(dates,'%m-%d')),mean)},dates))
 
