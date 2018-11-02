@@ -4,7 +4,7 @@ library(zoo)
 
 ##------------------------------------------------------------------------------
 make_average_series <- function(series,time,method,rlen=5,agg.fxn) {
-  method <- 'monthly'
+
   factor <- switch(method,
                    daily='%m-%d',
                    monthly='%m',
@@ -40,27 +40,53 @@ make_average_series <- function(series,time,method,rlen=5,agg.fxn) {
   }
 
   if (method=='roll') {
+    agg.data <- tapply(series,fac,agg.fxn)   
     agg.daily <- rollmean(agg.data,rlen,fill='extend')
   }    
-
-  return(agg.data)
+  
+  return(agg.daily)
 }
 
 ##------------------------------------------------------------------------------
+##------------------------------------------------------------------------------
 ##Separate stretching morphing functions
 
-morph.relative.humidity <- function(epw.series,alpha) {
-
-      if (method=='daily' | method =='roll') {
-        for (d in 1:365) {
-           ix <- format(dates,'%j') == sprintf('%03d',d)  
-           morphed.series[g,ix] <- morphing.fxn(epw.series[ix],alpha[d]) ##epw.series[ix] * alpha[d]
-        }
-      }
-
+##Relative Humidity
+morph_relative_humidity <- function(epw.series,alpha) {
+   morphed.series <- epw.series * alpha
+   morphed.series[morphed.series > 100] <- 100
+   return(morphed.series)
 }
 
+##Direct Normal Radiation
+morph_direct_normal <- function(epw.series,alpha) {
+   morphed.series <- epw.series / alpha
+}
 
+##Atmospheric Station Pressure, Wind Speed, Liquid Precip
+morph_by_stretch <- function(epw.series,alpha) {
+   morphed.series <- epw.series * alpha
+}
+
+## Sky Cover
+morph_sky_cover <- function(epw.series,alpha) {
+   morphed.series <- epw.series * alpha
+   morphed.series[morphed.series > 10] <- 10
+}
+
+get_morph_function <- function(epw.name) {
+   fxn <- list(direct_normal_radiation=morph_direct_normal,
+               relative_humidity=morph_relative_humidity,
+               atmospheric_station_pressure=morph_by_stretch,
+               wind_speed=morph_by_stretch,
+               total_sky_cover=morph_sky_cover,
+               opaque_sky_cover=morph_sky_cover,
+               liquid_precip_quantity=morph_by_stretch)
+    rv <- fxn[[epw.name]]
+   return(rv) 
+}
+
+##------------------------------------------------------------------------------
 ##------------------------------------------------------------------------------
 ##Morph Dry Bulb Temperature using Belcher method
 
@@ -81,36 +107,12 @@ morph_dry_bulb_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,in
       ix <- format(dates,'%j') == sprintf('%03d',d)
       epw.day.anoms[ix] <- epw.tas[ix] - epw.daily.mean[d]
    }
-   epw.agg.anoms <- epw.day.anoms
 
    epw.agg.mean <- make_average_series(epw.tas,dates,method=method,agg.fxn=mean)
    epw.agg.max <-  make_average_series(epw.tas,dates,method=method,agg.fxn=max)
    epw.agg.min <-  make_average_series(epw.tas,dates,method=method,agg.fxn=min)
 
-   if (method == 'monthly') {
-     for (d in seq_along(epw.agg.mean)) {
-        ix <- format(dates,'%m') == sprintf('%02d',d)
-        epw.agg.anoms[ix] <- epw.tas[ix] - epw.agg.mean[d]
-     }
-   }
-   if (method == 'roll') {
-     for (d in seq_along(epw.agg.mean)) {
-        ix <- format(dates,'%j') == sprintf('%03d',d)
-        epw.agg.anoms[ix] <- epw.tas[ix] - epw.agg.mean[d]
-     }     
-   }
-   if (method == 'seasonal') {
-     mn.fac <- as.factor(format(dates,'%m'))
-     seasons <-  c("DJF", "DJF", "MAM", "MAM", "MAM", "JJA", "JJA", "JJA", "SON", "SON", "SON", "DJF")
-     seas.fac <- factor(seasons[mn.fac], levels=c('DJF', 'MAM', 'JJA', 'SON'))      
-     for (d in seq_along(epw.agg.mean)) {
-        ix <- seas.fac == (c('DJF', 'MAM', 'JJA', 'SON')[d])
-        print(c('DJF', 'MAM', 'JJA', 'SON')[d])
-        epw.agg.anoms[ix] <- epw.tas[ix] - epw.agg.mean[d]
-     }
-   }
-
-   tlen <- length(epw.agg.mean)
+   tlen <- 365
    
    deltas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
    alphas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
@@ -156,44 +158,16 @@ morph_dry_bulb_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,in
       delta_tasmax <- proj.tx.agg - past.tx.agg
       delta_tasmin <- proj.tn.agg - past.tn.agg
       delta_tas <- (proj.tx.agg+proj.tn.agg)/2 - (past.tx.agg+past.tn.agg)/2
-      deltas[g,] <- delta_tas
       past_tas <- (past.tx.agg+past.tn.agg)/2
-      print('Delta')
-      print(delta_tas)
 
       alpha <- (delta_tasmax - delta_tasmin) / (epw.agg.max - epw.agg.min)
-      print('Alpha')
-      print(alpha)        
-      alphas[g,] <- alpha 
 
-      if (method=='daily' | method =='roll') {
-        for (d in 1:tlen) {
-           ix <- format(dates,'%j') == sprintf('%03d',d)  
-           morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[d] + alpha[d]*epw.agg.anoms[ix]
-           ##morphed.tas[g,ix] <- deltas[g,m] + alphas[g,m]*epw.agg.anoms[ix]
-        }
+      for (d in 1:tlen) {
+         ix <- format(dates,'%j') == sprintf('%03d',d)  
+         morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[d] + alpha[d]*epw.day.anoms[ix]
       }
-
-      if (method=='monthly') {
-        for (m in 1:tlen) {
-           ix <- format(dates,'%m') == sprintf('%02d',m)  
-           morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[m] + alpha[m]*epw.agg.anoms[ix]
-           ##morphed.tas[g,ix] <- deltas[g,m] + alphas[g,m]*epw.agg.anoms[ix]
-        }
-      }
-      if (method=='seasonal') {
-        for (s in 1:tlen) {
-           ix <- seas.fac == (c('DJF', 'MAM', 'JJA', 'SON')[d])
-           morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[s] + alpha[s]*epw.agg.anoms[ix]
-        }
-      }
-
-
 
    }##GCM loop
-
-   ens.deltas <- apply(deltas,2,mean)
-   ens.alphas <- apply(alphas,2,mean)
    ens.morphed.tas <- apply(morphed.tas,2,mean)
    epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
    return(epw.present)   
@@ -216,28 +190,8 @@ morph_dew_point_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,i
       ix <- format(dates,'%j') == sprintf('%03d',d)
       epw.day.anoms[ix] <- epw.dwpt[ix] - epw.daily.mean[d]
    }
-   epw.agg.anoms <- epw.day.anoms
-
-   if (method == 'monthly') {
-     epw.agg.mean <- make_average_series(epw.dwpt,dates,method='monthly',agg.fxn=mean)
-     for (d in seq_along(epw.agg.mean)) {
-        ix <- format(dates,'%m') == sprintf('%02d',d)
-        epw.agg.anoms[ix] <- epw.dwpt[ix] - epw.agg.mean[d]
-     }
-   }
-   if (method == 'roll') {
-     epw.agg.mean <- make_average_series(epw.dwpt,dates,method='roll',rlen=rlen,agg.fxn=mean)
-     for (d in 1:365) {
-        ix <- format(dates,'%j') == sprintf('%03d',d)
-        epw.agg.anoms[ix] <- epw.dwpt[ix] - epw.agg.mean[d]
-     }     
-   }
-
-   tlen <- length(epw.agg.mean)
+   tlen <- 365
    
-   deltas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
-   alphas <- matrix(0,nrow=length(gcm.list),ncol=tlen)
-
    morphed.dwpt <- matrix(0,nrow=length(gcm.list),ncol=length(epw.dwpt*0))
 
    for (g in seq_along(gcm.list)) {
@@ -263,31 +217,14 @@ morph_dew_point_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,i
 
       ##
       delta_dwpt <- proj.dwpt.agg - past.dwpt.agg
-      deltas[g,] <- delta_dwpt
-
       alpha <- proj.dwpt.sd / past.dwpt.sd
 
-      print('Alpha')
-      print(alpha)        
-      alphas[g,] <- alpha 
-
-      if (method=='daily' | method =='roll') {
-        for (d in 1:tlen) {
-           ix <- format(dates,'%j') == sprintf('%03d',d)  
-           morphed.dwpt[g,ix] <- epw.agg.mean[d] + delta_dwpt[d] + alpha[d]*epw.agg.anoms[ix]
-        }
-      }
-
-      if (method=='monthly') {
-        for (m in 1:tlen) {
-           ix <- format(dates,'%m') == sprintf('%02d',m)  
-           morphed.dwpt[g,ix] <- epw.agg.mean[m] + delta_dwpt[m] + alpha[m]*epw.agg.anoms[ix]
-        }
+      for (d in 1:tlen) {
+         ix <- format(dates,'%j') == sprintf('%03d',d)  
+         morphed.dwpt[g,ix] <- epw.agg.mean[d] + delta_dwpt[d] + alpha[d]*epw.day.anoms[ix]
       }
    }##GCM loop
 
-   ens.deltas <- apply(deltas,2,mean)
-   ens.alphas <- apply(alphas,2,mean)
    ens.morphed.dwpt <- apply(morphed.dwpt,2,mean)
    epw.present$data[,dwpt.ix] <- round(ens.morphed.dwpt,1)
    return(epw.present)   
@@ -333,35 +270,13 @@ generate_horizontal_radiation <- function(epw.present,lon,lat,gcm.list,gcm.dir,s
       ##
       alpha <- proj.gcm.agg / past.gcm.agg
 
-      print('Alpha')
-      print(alpha)        
 
-      if (method=='daily' | method =='roll') {
-        for (d in 1:365) {
-           ix <- format(dates,'%j') == sprintf('%03d',d)  
-           morphed.global[g,ix] <- epw.global[ix] * alpha[d]
-           morphed.diffuse[g,ix] <- (epw.global[ix] * alpha[d]) * diffuse.to.global.ratio[ix]           
-        }
+      for (d in 1:365) {
+         ix <- format(dates,'%j') == sprintf('%03d',d)  
+         morphed.global[g,ix] <- epw.global[ix] * alpha[d]
+         morphed.diffuse[g,ix] <- (epw.global[ix] * alpha[d]) * diffuse.to.global.ratio[ix]           
       }
 
-      if (method=='monthly') {
-        for (m in 1:12) {
-           ix <- format(dates,'%m') == sprintf('%02d',m)  
-           morphed.global[g,ix] <- epw.global[ix] * alpha[d]
-           morphed.diffuse[g,ix] <- (epw.global[ix] * alpha[d]) * diffuse.to.global.ratio[ix]           
-        }
-      }
-
-      if (method=='seasonal') {
-        monthly.fac <- as.factor(format(dates,'%m'))
-        seasons <-  c("DJF", "DJF", "MAM", "MAM", "MAM", "JJA", "JJA", "JJA", "SON", "SON", "SON", "DJF")
-        seasonal.fac <- factor(seasons[monthly.fac], levels=c('DJF', 'MAM', 'JJA', 'SON')) 
-        for (s in 1:4) {
-           ix <- seasonal.fac == unique(seasons)[s]  
-           morphed.global[g,ix] <- epw.global[ix] * alpha[d]
-           morphed.diffuse[g,ix] <- (epw.global[ix] * alpha[d]) * diffuse.to.global.ratio[ix]           
-        }
-      }
    }##GCM loop
 
    ens.morphed.global <- apply(morphed.global,2,mean)
@@ -381,7 +296,7 @@ generate_stretched_series <- function(epw.present,epw.var,gcm.var,lon,lat,gcm.li
                                       method,rlen=NULL,agg.fxn=mean) {
 
    epw.ix <- get_field_index(epw.var)
-   morph.fxn <- get.morph.function(epw.var)
+   morph.fxn <- get_morph_function(epw.var)
    epw.series <- epw.present$data[,epw.ix]
    dates <- as.Date(paste('1999',sprintf('%02d',epw.present$data[,2]),sprintf('%02d',epw.present$data[,3]),sep='-'))
    
@@ -408,36 +323,13 @@ generate_stretched_series <- function(epw.present,epw.var,gcm.var,lon,lat,gcm.li
       ##
       alpha <- proj.gcm.agg / past.gcm.agg
 
-      if (method=='daily' | method =='roll') {
-        for (d in 1:365) {
-           ix <- format(dates,'%j') == sprintf('%03d',d)  
-           morphed.series[g,ix] <- morphing.fxn(epw.series[ix],alpha[d]) ##epw.series[ix] * alpha[d]
-        }
-      }
-
-      if (method=='monthly') {
-        for (m in 1:12) {
-           ix <- format(dates,'%m') == sprintf('%02d',m)  
-           morphed.series[g,ix] <- epw.series[ix] * alpha[m]
-        }
-      }
-
-      if (method=='seasonal') {
-        monthly.fac <- as.factor(format(dates,'%m'))
-        seasons <-  c("DJF", "DJF", "MAM", "MAM", "MAM", "JJA", "JJA", "JJA", "SON", "SON", "SON", "DJF")
-        seasonal.fac <- factor(seasons[monthly.fac], levels=c('DJF', 'MAM', 'JJA', 'SON')) 
-        browser()
-        for (s in 1:4) {
-           ix <- seasonal.fac == unique(seasons)[s]  
-           morphed.series[g,ix] <- epw.series[ix] * alpha[m]
-        }
+      for (d in 1:365) {
+         ix <- format(dates,'%j') == sprintf('%03d',d)  
+         morphed.series[g,ix] <- morph.fxn(epw.series[ix],alpha[d]) ##epw.series[ix] * alpha[d]
       }
    }##GCM loop
 
-##   ens.deltas <- apply(deltas,2,mean)
-##   ens.alphas <- apply(alphas,2,mean)
-   ens.morphed.series <- apply(morphed.series,2,mean)
-   ens.morphed.series[ens.morphed.series > 100] <- 100
+   ens.morphed.series <- apply(morphed.series,2,mean)  
    epw.present$data[,epw.ix] <- round(ens.morphed.series,0)
    return(epw.present)   
 }

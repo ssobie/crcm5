@@ -88,19 +88,38 @@ sub_by_time <- function(var.name,lonc,latc,interval,input.file,gcm,read.dir) {
 
 ##**************************************************************************************
 
-scenario <- 'rcp85'
-interval <- '2071-2100'
+##scenario <- 'rcp85'
+##interval <- '2071-2100'
 
-lon <- -122.36
-lat <- 49.03
+##lon <- -122.36
+##lat <- 49.03
 
-method <- 'seasonal'
-rlen <- ''
+##method <- 'seasonal'
+##rlen <- ''
+
+if (method!='roll') { 
+  rlen <- ''
+}
+
+args <- commandArgs(trailingOnly=TRUE)
+for(i in 1:length(args)){
+    eval(parse(text=args[[i]]))
+}
+print(scenario)
+print(method)
+print(rlen)
+print(lon)
+print(lat)
+
+print(infile)
 
 epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/offsets/'
 write.dir <- '/storage/data/projects/rci/weather_files/wx_files/morphed_files/'
-present.epw.file <- 'CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
-future.epw.file <- paste0('testMORPHED_',toupper(method),rlen,'_TAS_RHS_CAN_BC_1st_and_Clark_',interval,'_CWEC.epw')
+##infile ##'CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
+
+present.epw.file <- 'CAN_BC_UVic_residence_offset_from_VICTORIA-UNIVERSITY-CS_1018598_CWEC.epw'
+future.epw.file <- paste0('MORPHED_',toupper(method),rlen,'_TAS_CAN_BC_UVic_residence_',interval,'_CWEC.epw')
+print(future.epw.file)
 
 full.list <- c('ACCESS1-0','CanESM2','CCSM4','CNRM-CM5','CSIRO-Mk3-6-0','GFDL-ESM2G',
               'HadGEM2-CC','HadGEM2-ES','inmcm4','MIROC5','MPI-ESM-LR','MRI-CGCM3')
@@ -114,7 +133,6 @@ epw.present <- read.epw.file(epw.dir,present.epw.file)
 
 ##Create one year of daily dates
 
-
 epw.morphed.tas <- morph_dry_bulb_temp(epw.present,
                         lon,lat,
                         gcm.list=full.list,
@@ -122,19 +140,27 @@ epw.morphed.tas <- morph_dry_bulb_temp(epw.present,
                         scenario,interval=interval,
                         method=method,rlen=rlen)
 
-epw.morphed.rhs <- generate_stretched_series(epw.morphed.tas,'relative_humidity','rhs',
-                        lon,lat,
-                        gcm.list=sub.list,
-                        gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
-                        scenario,interval=interval,
-                        method=method,rlen=rlen)
 
-write.epw.file(epw.morphed.rhs$data,epw.morphed.tas$header,write.dir,future.epw.file)
+write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file)
+
+##epw.morphed.rhs <- generate_stretched_series(epw.morphed.tas,'relative_humidity','rhs',
+##                        lon,lat,
+##                        gcm.list=sub.list,
+##                        gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
+##                        scenario,interval=interval,
+##                        method=method,rlen=rlen)
+
 
 ##epw.morphed.dwpt <- morph_dew_point_temp(epw.present,lon,lat,gcm.list,
 ##                        gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
 ##                        scenario,interval,method=method,rlen=rlen)
 
 
-##browser()
+##epw.morphed.dnr <- generate_stretched_series(epw.present,'direct_normal_radiation','clt',
+##                        lon,lat,
+##                        gcm.list=sub.list,
+##                        gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
+##                        scenario,interval=interval,
+##                        method=method,rlen=rlen)
+
 
