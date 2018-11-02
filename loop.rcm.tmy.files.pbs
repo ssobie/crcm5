@@ -1,0 +1,16 @@
+#!/bin/bash
+
+gcm='CanESM2'
+
+##qsub -N "${gcm}.tas.p" -v gcm=$gcm,varname='tas',interval='1981-2010' run.rcm.tmy.files.pbs
+##qsub -N "${gcm}.tas.f" -v gcm=$gcm,varname='tas',interval='2021-2050' run.rcm.tmy.files.pbs
+
+##qsub -N "${gcm}.rhs.p" -v gcm=$gcm,varname='rhs',interval='1981-2010' run.rcm.tmy.files.pbs
+##qsub -N "${gcm}.rhs.f" -v gcm=$gcm,varname='rhs',interval='2021-2050' run.rcm.tmy.files.pbs
+
+##qsub -N "${gcm}.wspd.p" -v gcm=$gcm,varname='wspd',interval='1981-2010' run.rcm.tmy.files.pbs
+##qsub -N "${gcm}.wspd.f" -v gcm=$gcm,varname='wspd',interval='2021-2050' run.rcm.tmy.files.pbs
+
+qsub -N "${gcm}.dwpt.p" -v gcm=$gcm,varname='dewpoint',interval='1981-2010' run.rcm.tmy.files.pbs
+qsub -N "${gcm}.dwpt.f" -v gcm=$gcm,varname='dewpoint',interval='2021-2050' run.rcm.tmy.files.pbs
+

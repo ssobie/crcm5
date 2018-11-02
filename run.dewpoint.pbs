@@ -1,0 +1,22 @@
+#!/bin/bash                                                                                                                                
+#PBS -l nodes=1:ppn=4                                                                                         
+#PBS -l pmem=5000mb                                                                                                                       
+#PBS -l walltime=48:00:00                                                                                                                  
+#PBS -d /storage/home/ssobie/code/repos/crcm5/                                                                           
+#PBS -o /storage/home/ssobie/code/repos/crcm5/dewpoint.stdout.log
+#PBS -e /storage/home/ssobie/code/repos/crcm5/dewpoint.stderr.log                                      
+
+gcm='MPI'
+varname='dewpoint'
+freq='hour'
+interval='1980-2050'
+
+cd /storage/home/ssobie/code/repos/crcm5/
+echo "Current working directory is `pwd`"
+
+module load R/3.2.5
+module load netcdf-bin
+module load cdo-bin
+module load nco-bin
+
+nohup R CMD BATCH "--args tmpdir='/local_temp/ssobie/crcm5/' gcm='$gcm' varname='$varname' freq='$freq' interval='$interval'" dewpoint.temperature.r "./${gcm}.${varname}.${freq}.${interval}.dewpoint.out"

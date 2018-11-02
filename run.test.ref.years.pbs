@@ -1,0 +1,19 @@
+#!/bin/bash                                                                                                                                
+#PBS -l nodes=1:ppn=4                                                                                         
+#PBS -l pmem=5000mb                                                                                                                       
+#PBS -l walltime=24:00:00                                                                                                                  
+#PBS -d /storage/home/ssobie/code/repos/crcm5/                                                                           
+#PBS -o /storage/home/ssobie/code/repos/crcm5/config.stdout.log
+#PBS -e /storage/home/ssobie/code/repos/crcm5/config.stderr.log                                      
+
+cd /storage/home/ssobie/code/repos/crcm5/
+echo "Current working directory is `pwd`"
+
+gcm='ERAI'
+
+module load R/3.2.5
+module load netcdf-bin
+module load cdo-bin
+module load nco-bin
+
+nohup R CMD BATCH "--args tmpdir='/local_temp/ssobie/crcm5/' gcm='$gcm'" test.ref.year.wfs.r "./out_files/${gcm}.configure.out"
