@@ -3,7 +3,7 @@
 library(ncdf4)
 library(PCICt)
 library(zoo)
-
+library(scales)
 source('/storage/home/ssobie/code/repos/crcm5/read.write.epw.r',chdir=T)
 
 
@@ -219,11 +219,16 @@ morph_dry_bulb_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,
 
    }##GCM loop
 
+  hour.dates <- strftime(paste('1999-',sprintf('%02d',epw.present$data[,2]),'-',sprintf('%02d',epw.present$data[,3]),' ', 
+                         sprintf('%02d',epw.present$data[,4]),':00:00', sep=''),format='%Y-%m-%d %H:%M:%S')
+browser()
+
    ens.deltas <- apply(deltas,2,mean)
    ens.alphas <- apply(alphas,2,mean)
    ens.morphed.tas <- apply(morphed.tas,2,mean)
-   epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
-   return(epw.present)   
+   return(morphed.tas)
+   ##epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
+   ##return(epw.present)   
 }
 
 ##------------------------------------------------------------------------------
@@ -241,6 +246,8 @@ epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/offsets/'
 write.dir <- '/storage/data/projects/rci/weather_files/wx_files/morphed_files/'
 present.epw.file <- 'CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
 future.epw.file <- 'MORPHED_ROLL21_TAS_CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
+plot.dir <- '/storage/data/projects/rci/weather_files/'
+
 
 epw.present <- read.epw.file(epw.dir,present.epw.file)
 
@@ -251,11 +258,80 @@ gcm.dir <- '/storage/data/climate/downscale/BCCAQ2+PRISM/high_res_downscaling/bc
 gcm.list <- c('ACCESS1-0','CanESM2','CCSM4','CNRM-CM5','CSIRO-Mk3-6-0','GFDL-ESM2G',
               'HadGEM2-CC','HadGEM2-ES','inmcm4','MIROC5','MPI-ESM-LR','MRI-CGCM3')
 
-epw.morphed.tas <- morph_dry_bulb_temp(epw.present,lon,lat,gcm.list,gcm.dir,scenario,method='roll',rlen=21)
+##epw.morphed.tas <- morph_dry_bulb_temp(epw.present,lon,lat,gcm.list,gcm.dir,scenario,method='roll',rlen=21)
+dates <- as.Date(paste('1999',sprintf('%02d',epw.present$data[,2]),sprintf('%02d',epw.present$data[,3]),sep='-'))
+hour.dates <- strftime(paste('1999-',sprintf('%02d',epw.present$data[,2]),'-',sprintf('%02d',epw.present$data[,3]),' ', 
+                       sprintf('%02d',epw.present$data[,4]),':00:00', sep=''),format='%Y-%m-%d %H:%M:%S')
+dy.dates <- as.Date(unique(format(dates,'%Y-%m-%d')))
 
-write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file)
+load('/storage/data/projects/rci/weather_files/morphed.tas.RData')
+load('/storage/data/projects/rci/weather_files/alphas.RData')
+load('/storage/data/projects/rci/weather_files/deltas.RData')
+   epw.tas <- epw.present$data[,7]
+   epw.agg.mean <- epw.daily.mean <- make_average_series(epw.tas,dates,method='daily',agg.fxn=mean)
+   epw.day.anoms <- epw.tas*0
+   ##Daily
+   for (d in 1:365) {
+      ix <- format(dates,'%j') == sprintf('%03d',d)
+      epw.day.anoms[ix] <- epw.tas[ix] - epw.daily.mean[d]
+   }
+  ##--------------
+  mn <- '-06-|-07-|-08-'
+  hr.dates <- hour.dates[grep(mn,hour.dates)]
+  hr.dy <- dy.dates[grep(mn,dy.dates)]
+  hr.epw <- epw.present$data[grep(mn,dates),7]
+  hr.morph <- morphed.tas[,grep(mn,dates)]
+  hr.anoms <- epw.day.anoms[grep(mn,dates)]
+  
+  mn.max <- tapply(hr.epw,as.factor(format(as.Date(hr.dates),'%m-%d')),max)
+  mn.min <- tapply(hr.epw,as.factor(format(as.Date(hr.dates),'%m-%d')),min)
+  mn.mean <- tapply(hr.epw,as.factor(format(as.Date(hr.dates),'%m-%d')),mean)
 
-browser()
+  plot.file <- paste0(plot.dir,'agu.examples.abbotsford.jul1.diurnal.tas.png')
+  png(plot.file,width=1000,height=400)
+  par(mar=c(4.5,4.5,4,2))
+  days <- format(as.Date(hr.dy),'%b-%d')
+  plot(1:length(days),mn.mean,type='l',lwd=4,xlab='Hour',ylab='Temperature (\u00B0C)',xaxs='i',
+       cex.main=2,cex.lab=1.5,cex.axis=1.5,main='Abbotsford Summer Temperature',ylim=c(8,35),col='white',axes=F)
+  dx <- c(1,10,20,31,40,50,60,71,81,92)
+  axis(1,at=dx,labels=days[dx],cex.axis=1.5,cex=1.5)
+  axis(2,at=seq(-40,40,2),labels=seq(-40,40,2),cex.axis=1.5,cex=1.5)
+  abline(h=seq(-40,40,2),lty=2,col='gray',lwd=1)
+
+  polygon(c(1:length(days),rev(1:length(days))),
+          c(mn.min,rev(mn.max)),col=alpha('gray',0.4),border=alpha('gray',0.4))
+  lines(1:length(days),mn.mean,lwd=5)
+  
+##  morph.dy.mn <- t(apply(hr.morph,1,function(x,y){tapply(x,y,mean)},as.factor(format(as.Date(hr.dates),'%m-%d'))))
+##  morph.dy.max <- t(apply(hr.morph,1,function(x,y){tapply(x,y,max)},as.factor(format(as.Date(hr.dates),'%m-%d'))))
+##  morph.dy.min <- t(apply(hr.morph,1,function(x,y){tapply(x,y,min)},as.factor(format(as.Date(hr.dates),'%m-%d'))))
+##  m50 <- apply(morph.dy.mn,2,mean)
+##  m10 <- apply(morph.dy.min,2,quantile,0.1)
+##  m90 <- apply(morph.dy.max,2,quantile,0.9)
+  m50 <- tapply(hr.morph[3,],as.factor(format(as.Date(hr.dates),'%m-%d')),mean)
+  m90 <- tapply(hr.morph[3,],as.factor(format(as.Date(hr.dates),'%m-%d')),max)
+  m10 <- tapply(hr.morph[3,],as.factor(format(as.Date(hr.dates),'%m-%d')),min)
+  polygon(c(1:length(days),rev(1:length(days))),
+          c(m10,rev(m90)),col=alpha('red',0.2),border=alpha('red',0.2))
+  lines(1:length(days),m50,lwd=5,col='red')
+    
+  for (i in 1:12) {
+  ##  lines(1:length(days),morph.days[i,],lwd=2,col='green')
+  }
+  box(which='plot')
+
+##for (i in 1:12) {
+##  lines(alphas[i,as.numeric(mn)]*hr.anoms[1:24],lwd=2)
+##}
+  dev.off()
+
+  ##--------------
+browser()  
+
+morphed.tas <- epw.morphed.tas$data[,7]
+##write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file)
+
+##browser()
 
 
 daily.morphed.tas <- t(apply(morphed.tas,1,function(x,dates){tapply(x,as.factor(format(dates,'%m-%d')),mean)},dates))
@@ -289,23 +365,24 @@ box(which='plot')
 dev.off()
 }
 
+browser()
+
 if (1==0) {
-plot.file <- paste0(plot.dir,'examples.abbotsford.jan.diurnal.tas.png')
+plot.file <- paste0(plot.dir,'agu.examples.abbotsford.jul1.diurnal.tas.png')
 png(plot.file,width=1200,height=800)
 par(mar=c(4.5,4.5,4,2))
-plot(1:24,hr.morph[1:24],type='l',lwd=4,xlab='Day',ylab='Temperature (\u00B0C)',
-     cex.main=2,cex.lab=1.5,cex.axis=1.5,main='Abbotsford Jan Hourly Temperature',ylim=c(-15,15),col='white',axes=F)
+plot(1:24,hr.epw[1:24],type='l',lwd=4,xlab='Day',ylab='Temperature (\u00B0C)',
+     cex.main=2,cex.lab=1.5,cex.axis=1.5,main='Abbotsford Jul 1st Hourly Temperature',ylim=c(10,26),col='white',axes=F)
 axis(1,at=1:24,labels=1:24,cex.axis=1.5,cex=1.5)
-axis(2,at=seq(-15,35,5),labels=seq(-15,35,5),cex.axis=1.5,cex=1.5)
-abline(h=seq(-15,35,5),lty=2,col='gray',lwd=2)
+axis(2,at=seq(-40,40,2),labels=seq(-40,40,2),cex.axis=1.5,cex=1.5)
+abline(h=seq(-40,40,2),lty=2,col='gray',lwd=1)
 abline(h=0,col='gray')
+lines(1:24,hr.epw[1:24],lwd=4)
 
-slen <- length(unique( format(as.Date(hr.dates),'%d')))
-for (dy in 1:slen) {
-  ix <- sprintf('%02d',dy) == format(as.Date(hr.dates),'%d')
-  lines(1:24,hr.epw[ix],lwd=2)
+for (i in 1:12) {
+  lines(hr.morph[i,1:24],lwd=1,col='gray')
 }
-
+lines(apply(hr.morph[,1:24],2,mean),lwd=3,col='orange')
 box(which='plot')
 dev.off()
 

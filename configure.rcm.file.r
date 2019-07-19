@@ -61,10 +61,10 @@ correct.rcm.time.series <- function(nc,freq) {
   time.atts <- ncatt_get(nc,'t')
   time.calendar <- time.atts$calendar
   time.units <- time.atts$units
-  time.values <- ncvar_get(nc,'t') 
+  time.values <- ncvar_get(nc,'t')
   origin.pcict <- as.PCICt(strsplit(time.units, ' ')[[1]][3],
                            cal=time.calendar)
-  time.series <- origin.pcict + time.values*86400      
+  time.series <- origin.pcict + time.values*3600 ##86400      
 
   if (freq=='day' & grepl('hour',time.units)) { ##Convert hourly to daily
      time.series <- origin.pcict + time.values*3600
@@ -82,7 +82,7 @@ correct.rcm.time.series <- function(nc,freq) {
   new.origin <- as.PCICt(strsplit(time.units, ' ')[[1]][3],
                          cal=time.calendar)
   
-  fixed.series <- new.origin + time.values*86400      
+  fixed.series <- new.origin + time.values*3600 ##86400      
 
   rv <- list(values=time.values,
              series=fixed.series,
@@ -213,11 +213,11 @@ move.data.to.new.file <- function(gcm,varname,
                            cal=time.calendar)
   
   ##For Temperature (or similar daily quantities)
-  if (grepl('(tasm|giac|giml|gld|glf|gsab|gsac|gsml|gvol|swater|sice)',new.var)) {
+  if (grepl('(pr|tas|tasm|giac|giml|gld|glf|gsab|gsac|gsml|gvol|swater|sice)',new.var)) {
     var.dates <- origin.pcict + time.values*86400
     yr.fac <- as.factor(format(var.dates,'%Y'))
     yrs <- levels(yr.fac)
-browser()
+##browser()
     ##Split into loop to handle memory issues effectively
     l.st <- seq(1,time.len,by=400)
     l.en <- c(seq(400,time.len,by=400),time.len)
@@ -285,10 +285,10 @@ if (1==1) {
   }
 }
 
-##  gcm <- 'CanESM2'
-##  varname <- 'T9'
+##  gcm <- 'MPI'
+##  varname <- 'PR'
 ##  interval <- '1980-2050'
-##  freq <- 'day'
+##  freq <- 'hour'
 
 
 ##  write.file <- 'tasmax_day_WC011_ERA-Interim+CRCM5_historical+rcp85_198001-20141231.nc'  
@@ -298,8 +298,8 @@ if (1==1) {
    rcp <- ''
   }
 
-  ##tmp.base <- tmpdir
-  tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
+  tmp.base <- tmpdir
+  ##tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
   
   data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/')
   write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/',gcm,'/')

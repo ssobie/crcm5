@@ -61,17 +61,20 @@ morph_relative_humidity <- function(epw.series,alpha) {
 ##Direct Normal Radiation
 morph_direct_normal <- function(epw.series,alpha) {
    morphed.series <- epw.series / alpha
+   return(morphed.series)
 }
 
 ##Atmospheric Station Pressure, Wind Speed, Liquid Precip
 morph_by_stretch <- function(epw.series,alpha) {
    morphed.series <- epw.series * alpha
+   return(morphed.series)
 }
 
 ## Sky Cover
 morph_sky_cover <- function(epw.series,alpha) {
-   morphed.series <- epw.series * alpha
+   morphed.series <- round(epw.series * alpha)
    morphed.series[morphed.series > 10] <- 10
+   return(morphed.series)
 }
 
 get_morph_function <- function(epw.name) {
@@ -121,56 +124,33 @@ morph_dry_bulb_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,in
 
    for (g in seq_along(gcm.list)) {
       gcm <- gcm.list[g]
-      scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern=scenario)
-      var.files <- scen.files[grep("tasmax_day_BCCAQ2",scen.files)]
-      past.tx.file <- var.files[grep("1951-2000",var.files)]
-      proj.tx.file <- var.files[grep("2001-2100",var.files)]
+      alpha.files <- list.files(path=gcm.dir,pattern=paste0('alpha_tasmax_tasmin_',gcm))
+      alpha.int.file <- alpha.files[grep(interval,alpha.files)]
 
-      past.tx <- sub_by_time(var.name='tasmax',lonc=lon,latc=lat,
-                                  interval='1971-2000',
-                                  input.file=past.tx.file,gcm=gcm,read.dir=gcm.dir)
-      past.tx.agg <- make_average_series(past.tx$data,past.tx$time,
-                                         method,rlen,agg.fxn)
-
-      proj.tx <- sub_by_time(var.name='tasmax',lonc=lon,latc=lat,
-                                  interval=interval,
-                                  input.file=proj.tx.file,gcm=gcm,read.dir=gcm.dir)
-      proj.tx.agg <- make_average_series(proj.tx$data,proj.tx$time,
-                                         method,rlen,agg.fxn)
-
-      var.files <- scen.files[grep("tasmin_day_BCCAQ2",scen.files)]
-      past.tn.file <- var.files[grep("1951-2000",var.files)]
-      proj.tn.file <- var.files[grep("2001-2100",var.files)]
-
-      past.tn <- sub_by_time(var.name='tasmin',lonc=lon,latc=lat,
-                             interval='1971-2000',
-                             input.file=past.tn.file,gcm=gcm,read.dir=gcm.dir)
-      past.tn.agg <- make_average_series(past.tn$data,past.tn$time,
-                                         method,rlen,agg.fxn)
-
-      proj.tn <- sub_by_time(var.name='tasmin',lonc=lon,latc=lat,
-                             interval=interval,
-                             input.file=proj.tn.file,gcm=gcm,read.dir=gcm.dir)
-      proj.tn.agg <- make_average_series(proj.tn$data,proj.tn$time,
-                                         method,rlen,agg.fxn)
+      alpha.tx.tn <- read_cell(var.name='alpha_tas',lonc=lon,latc=lat,
+                               input.file=alpha.int.file,read.dir=gcm.dir)
+      alpha.tx.tn.agg <- make_average_series(alpha.tx.tn$data,alpha.tx.tn$time,
+                                          method,rlen,agg.fxn)
+ 
+      delta.ts.files <- list.files(path=gcm.dir,pattern=paste0('delta_tas_',gcm))
+      delta.ts.int.file <- delta.ts.files[grep(interval,delta.ts.files)]
+      delta.ts <- read_cell(var.name='tas',lonc=lon,latc=lat,
+                            input.file=delta.ts.int.file,read.dir=gcm.dir)
+      delta.ts.agg <- make_average_series(delta.ts$data,delta.ts$time,
+                                          method,rlen,agg.fxn)
 
       ##
-      delta_tasmax <- proj.tx.agg - past.tx.agg
-      delta_tasmin <- proj.tn.agg - past.tn.agg
-      delta_tas <- (proj.tx.agg+proj.tn.agg)/2 - (past.tx.agg+past.tn.agg)/2
-      past_tas <- (past.tx.agg+past.tn.agg)/2
-
-      alpha <- (delta_tasmax - delta_tasmin) / (epw.agg.max - epw.agg.min)
-
+      alpha <- alpha.tx.tn.agg / (epw.agg.max - epw.agg.min)
       for (d in 1:tlen) {
          ix <- format(dates,'%j') == sprintf('%03d',d)  
-         morphed.tas[g,ix] <- epw.tas[ix] + delta_tas[d] + alpha[d]*epw.day.anoms[ix]
+         morphed.tas[g,ix] <- epw.tas[ix] + delta.ts.agg[d] + alpha[d]*epw.day.anoms[ix]
       }
 
    }##GCM loop
-   ens.morphed.tas <- apply(morphed.tas,2,mean)
-   epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
-   return(epw.present)   
+   ##ens.morphed.tas <- apply(morphed.tas,2,mean)
+   ##epw.present$data[,tas.ix] <- round(ens.morphed.tas,1)
+   ##browser()
+   return(morphed.tas) ##epw.present)   
 }
 
 ##------------------------------------------------------------------------------
@@ -196,38 +176,32 @@ morph_dew_point_temp <- function(epw.present,lon,lat,gcm.list,gcm.dir,scenario,i
 
    for (g in seq_along(gcm.list)) {
       gcm <- gcm.list[g]
-      scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern=scenario)
-      var.files <- scen.files[grep("dewpoint",scen.files)]
-      dwpt.file <- var.files[grep("19500101-21001231",var.files)]
-      past.dwpt <- sub_by_time(var.name='dewpoint',lonc=lon,latc=lat,
-                               interval='1971-2000',
-                               input.file=dwpt.file,gcm=gcm,read.dir=gcm.dir)
-      past.dwpt.agg <- make_average_series(past.dwpt$data,past.dwpt$time,
-                                         method,rlen,agg.fxn)
-      past.dwpt.sd <- make_average_series(past.dwpt$data,past.dwpt$time,
-                                          method,rlen,sd)
 
-      proj.dwpt <- sub_by_time(var.name='dewpoint',lonc=lon,latc=lat,
-                                  interval=interval,
-                                  input.file=dwpt.file,gcm=gcm,read.dir=gcm.dir)
-      proj.dwpt.agg <- make_average_series(proj.dwpt$data,proj.dwpt$time,
-                                         method,rlen,agg.fxn)
-      proj.dwpt.sd <- make_average_series(proj.dwpt$data,proj.dwpt$time,
-                                          method,rlen,sd)
+      alpha.files <- list.files(path=gcm.dir,pattern=paste0('alpha_dewpoint_',gcm))
+      alpha.int.file <- alpha.files[grep(interval,alpha.files)]
+
+      alpha.dwpt <- read_cell(var.name='alpha_dewpoint',lonc=lon,latc=lat,
+                              input.file=alpha.int.file,read.dir=gcm.dir)
+      alpha.dwpt.agg <- make_average_series(alpha.dwpt$data,alpha.dwpt$time,
+                                          method,rlen,agg.fxn)
+
+      delta.dwpt.files <- list.files(path=gcm.dir,pattern=paste0('delta_dewpoint_',gcm))
+      delta.dwpt.int.file <- delta.dwpt.files[grep(interval,delta.dwpt.files)]
+      delta.dwpt <- read_cell(var.name='dewpoint',lonc=lon,latc=lat,
+                            input.file=delta.dwpt.int.file,read.dir=gcm.dir)
+      delta.dwpt.agg <- make_average_series(delta.dwpt$data,delta.dwpt$time,
+                                          method,rlen,agg.fxn)
 
       ##
-      delta_dwpt <- proj.dwpt.agg - past.dwpt.agg
-      alpha <- proj.dwpt.sd / past.dwpt.sd
-
       for (d in 1:tlen) {
          ix <- format(dates,'%j') == sprintf('%03d',d)  
-         morphed.dwpt[g,ix] <- epw.agg.mean[d] + delta_dwpt[d] + alpha[d]*epw.day.anoms[ix]
+         morphed.dwpt[g,ix] <- epw.agg.mean[d] + delta.dwpt.agg[d] + alpha.dwpt.agg[d]*epw.day.anoms[ix]
       }
    }##GCM loop
 
    ens.morphed.dwpt <- apply(morphed.dwpt,2,mean)
    epw.present$data[,dwpt.ix] <- round(ens.morphed.dwpt,1)
-   return(epw.present)   
+   return(morphed.dwpt) ##epw.present)   
 }
 
 ##------------------------------------------------------------------------------
@@ -247,34 +221,21 @@ generate_horizontal_radiation <- function(epw.present,lon,lat,gcm.list,gcm.dir,s
    morphed.global <- matrix(0,nrow=length(gcm.list),ncol=length(epw.global*0))
    morphed.diffuse <- matrix(0,nrow=length(gcm.list),ncol=length(epw.diffuse*0))
 
-   gcm.var <- 'rsds'
-
    for (g in seq_along(gcm.list)) {
       gcm <- gcm.list[g]
-      
-      scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern=scenario)
-      var.files <- scen.files[grep(gcm.var,scen.files)]
-      gcm.file <- var.files[grep("19500101-21001231",var.files)]
-      past.gcm <- sub_by_time(var.name=gcm.var,lonc=lon,latc=lat,
-                               interval='1971-2000',
-                               input.file=gcm.file,gcm=gcm,read.dir=gcm.dir)
-      past.gcm.agg <- make_average_series(past.gcm$data,past.gcm$time,
-                                         method,rlen,agg.fxn)
+      print(gcm)      
+      alpha.files <- list.files(path=gcm.dir,pattern=paste0('alpha_rsds_',gcm))
+      alpha.int.file <- alpha.files[grep(interval,alpha.files)]
+      print(alpha.int.file)
 
-      proj.gcm <- sub_by_time(var.name=gcm.var,lonc=lon,latc=lat,
-                                  interval=interval,
-                                  input.file=gcm.file,gcm=gcm,read.dir=gcm.dir)
-      proj.gcm.agg <- make_average_series(proj.gcm$data,proj.gcm$time,
-                                          method,rlen,agg.fxn)
-
-      ##
-      alpha <- proj.gcm.agg / past.gcm.agg
-
-
+      alpha.rsds <- read_cell(var.name='rsds',lonc=lon,latc=lat,
+                              input.file=alpha.int.file,read.dir=gcm.dir)
+      alpha.rsds.agg <- make_average_series(alpha.rsds$data,alpha.rsds$time,
+                                          method,rlen,agg.fxn)  
       for (d in 1:365) {
          ix <- format(dates,'%j') == sprintf('%03d',d)  
-         morphed.global[g,ix] <- epw.global[ix] * alpha[d]
-         morphed.diffuse[g,ix] <- (epw.global[ix] * alpha[d]) * diffuse.to.global.ratio[ix]           
+         morphed.global[g,ix] <- epw.global[ix] * alpha.rsds.agg[d]
+         morphed.diffuse[g,ix] <- (epw.global[ix] * alpha.rsds.agg[d]) * diffuse.to.global.ratio[ix]           
       }
 
    }##GCM loop
@@ -283,7 +244,8 @@ generate_horizontal_radiation <- function(epw.present,lon,lat,gcm.list,gcm.dir,s
    ens.morphed.diffuse <- apply(morphed.diffuse,2,mean)
    epw.present$data[,ghr.ix] <- round(ens.morphed.global,0)
    epw.present$data[,dhr.ix] <- round(ens.morphed.diffuse,0)
-   return(epw.present)   
+   rv <- list(global=morphed.global,diffuse=morphed.diffuse)
+   return(rv) ##epw.present)   
 }
 
 ##------------------------------------------------------------------------------
@@ -304,34 +266,23 @@ generate_stretched_series <- function(epw.present,epw.var,gcm.var,lon,lat,gcm.li
 
    for (g in seq_along(gcm.list)) {
       gcm <- gcm.list[g]
-      
-      scen.files <- list.files(path=paste0(gcm.dir,gcm),pattern=scenario)
-      var.files <- scen.files[grep(gcm.var,scen.files)]
-      gcm.file <- var.files[grep("19500101-21001231",var.files)]
-      past.gcm <- sub_by_time(var.name=gcm.var,lonc=lon,latc=lat,
-                               interval='1971-2000',
-                               input.file=gcm.file,gcm=gcm,read.dir=gcm.dir)
-      past.gcm.agg <- make_average_series(past.gcm$data,past.gcm$time,
-                                         method,rlen,agg.fxn)
+      alpha.files <- list.files(path=gcm.dir,pattern=paste0('alpha_',gcm.var,'_',gcm))
+      alpha.int.file <- alpha.files[grep(interval,alpha.files)]
 
-      proj.gcm <- sub_by_time(var.name=gcm.var,lonc=lon,latc=lat,
-                                  interval=interval,
-                                  input.file=gcm.file,gcm=gcm,read.dir=gcm.dir)
-      proj.gcm.agg <- make_average_series(proj.gcm$data,proj.gcm$time,
-                                          method,rlen,agg.fxn)
-
-      ##
-      alpha <- proj.gcm.agg / past.gcm.agg
+      alpha <- read_cell(var.name=gcm.var,lonc=lon,latc=lat,
+                              input.file=alpha.int.file,read.dir=gcm.dir)
+      alpha.agg <- make_average_series(alpha$data,alpha$time,
+                                          method,rlen,agg.fxn)  
 
       for (d in 1:365) {
          ix <- format(dates,'%j') == sprintf('%03d',d)  
-         morphed.series[g,ix] <- morph.fxn(epw.series[ix],alpha[d]) ##epw.series[ix] * alpha[d]
+         morphed.series[g,ix] <- morph.fxn(epw.series[ix],alpha.agg[d]) ##epw.series[ix] * alpha[d]         
       }
    }##GCM loop
 
    ens.morphed.series <- apply(morphed.series,2,mean)  
    epw.present$data[,epw.ix] <- round(ens.morphed.series,0)
-   return(epw.present)   
+   return(morphed.series) ##epw.present)   
 }
 
 ##------------------------------------------------------------------------------

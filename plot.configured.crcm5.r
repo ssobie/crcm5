@@ -100,7 +100,7 @@ make.raster.version <- function(nc,data) {
   ##Reproject to North America Lambert Conformal Conic
   nalcc.crs <- CRS("+init=epsg:3005") ##CRS("+proj=lcc +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs'")
   map.raster <- projectRaster(ts,crs=nalcc.crs)
-  return(map.raster)
+  return(ts) ##map.raster)
 }
 
 

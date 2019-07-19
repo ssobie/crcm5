@@ -22,7 +22,6 @@ get_epw_coordinates <- function(epw.dir,epw.file) {
    if (lat < 40 | lat > 90) {
       stop('Ill defined latitude coordinate')
    }
-       
    rv <- c(lon,lat)
    return(rv)
 }
@@ -49,12 +48,14 @@ list_of_epw_coordinates <- function(epw.dir,epw.files) {
 ##supplied coordinates
 
 find_closest_epw_file <- function(coords,
-                                  epw.dir='/storage/data/projects/rci/weather_files/wx_files/') 
+                                  epw.dir='/storage/data/projects/rci/weather_files/wx_2016/') 
                          {
-  epw.files <- list.files(path=epw.dir,pattern='CWEC.epw')
+  epw.files <- list.files(path=epw.dir,pattern='CWEC2016.epw')
   epw.coords <- list_of_epw_coordinates(epw.dir,epw.files)
   wx.ix <- which.min(apply((epw.coords - matrix(coords,nrow=nrow(epw.coords),ncol=2,byrow=T))^2,1,sum))
   wx.selected <- epw.files[wx.ix]
+  ###browser()
+  wx.selected <- 'CAN_BC_Vancouver.Intl.AP.718920_CWEC2016.epw'
   return(list(dir=epw.dir,file=wx.selected))
 }
 
@@ -64,7 +65,7 @@ find_closest_epw_file <- function(coords,
 
 prism_nc <- function(var.name,prism.dir) {
 
-   prism.filename <- paste0(prism.dir,var.name,'_lm_subset.nc')
+   prism.filename <- paste0(prism.dir,var.name,'_monClim_PRISM_historical_run1_198101-201012.nc')
    nc <- nc_open(prism.filename)  
    return(nc)
 }
@@ -124,32 +125,56 @@ generate_prism_offset <- function(lon,lat,epw.dir,prism.dir,new.location) {
    epw.closest <- find_closest_epw_file(coords,epw.dir)
    epw.closest.coords <- get_epw_coordinates(epw.closest$dir,
                                              epw.closest$file)
+
    prism.nc <- prism_nc('tmax',prism.dir)
    prism.cell <- get_prism_indices(prism.nc,coords)
+   print(paste0('PRISM Cells: ',prism.cell))
    epw.cell <- get_prism_indices(prism.nc,epw.closest.coords)
+   print(paste0('EPW Cells: ',prism.cell))
    prism.loc.tas <- prism_tas(prism.cell,prism.dir)
    prism.epw.tas <- prism_tas(epw.cell,prism.dir)
    prism.diff <- prism.loc.tas - prism.epw.tas
-
+   print(prism.diff)
    epw <- read.epw.file(epw.closest$dir,
                         epw.closest$file)   
    epw.offset <- adjust_epw_with_prism(epw$data,prism.diff)
    epw.split <- strsplit(epw.closest$file,'_')[[1]]
    write.epw.file <- paste(epw.split[1],epw.split[2],
                            new.location,'offset_from',
-                           epw.split[3],epw.split[4],
-                           epw.split[5],sep='_')
+                           epw.split[3],epw.split[4],sep='_')
+                           ##epw.split[5],sep='_') ##For 2011 
+
+   line.split <- strsplit(epw$header[1],',')[[1]]
+   line.split[7] <- round(lat,3)
+   line.split[8] <- round(lon,3)
+   epw$header[1] <- paste0(line.split,collapse=',')
    write.epw.file(epw.offset,epw$header,
                   paste0(epw.dir,'offsets/'),write.epw.file)
    print(write.epw.file)
-
+   epw.offset <- list(file=write.epw.file,dir=paste0(epw.dir,'offsets/'))
+   rv <- list(closest=epw.closest,offset=epw.offset)
+   return(rv)
 }
 
 ##----------------------------------------------------------
-epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/'
-prism.dir <- '/storage/data/projects/rci/weather_files/PRISM/'
-new.location <- 'UVic_residence'
+epw.dir <- '/storage/data/projects/rci/weather_files/wx_2016/'
+prism.dir <- '/storage/data/climate/PRISM/dataportal/'
+new.location <- 'UBC'
 
-test <- generate_prism_offset(-123.307119,48.464223,epw.dir,prism.dir,new.location)
+test <- generate_prism_offset(-123.25378,49.262543,epw.dir,prism.dir,new.location) ##UBCWesbrook
+
+##test <- generate_prism_offset(-122.9288056,49.2773898,epw.dir,prism.dir,new.location) ##UBCWesbrook
+
+##test <- generate_prism_offset(-123.234678,49.253745,epw.dir,prism.dir,new.location) ##UBCWesbrook
+
+##test <- generate_prism_offset(-123.094656,49.314414,epw.dir,prism.dir,new.location) ##Harbourside (BC Housing)
+##test <- generate_prism_offset(-123.69667,48.38444,epw.dir,prism.dir,new.location) ##Sooke Reserve
+##test <- generate_prism_offset(-123.722775,48.786147,epw.dir,prism.dir,new.location) ##Cowichan Hospital
+##test <- generate_prism_offset(-122.891355,49.226239,epw.dir,prism.dir,new.location) ##RoyalColumbian
+##test <- generate_prism_offset(-123.117856,49.218684,epw.dir,prism.dir,new.location) ##Dogwood
+##test <- generate_prism_offset(-123.97049,49.18498,epw.dir,prism.dir,new.location) ##NRGH
+##test <- generate_prism_offset(-123.1469,49.1687,epw.dir,prism.dir,new.location) ##Richmond
+##test <- generate_prism_offset(-123.0684,49.3209,epw.dir,prism.dir,new.location) ##Lions gate
+##test <- generate_prism_offset(-123.307119,48.464223,epw.dir,prism.dir,new.location)
 ##test <- generate_prism_offset(-123.0774,49.2697,epw.dir,prism.dir,new.location) ##1st and Clark
 

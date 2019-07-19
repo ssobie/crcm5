@@ -84,71 +84,124 @@ sub_by_time <- function(var.name,lonc,latc,interval,input.file,gcm,read.dir) {
   return(rv)
 }
 
+
+check_for_gcm_data <- function(lonc,latc,gcm.dir,gcm,scenario) {
+
+  scen.files <- list.files(path=paste0(gcm.dir,gcm,'/'),pattern=scenario)
+  tasmax.files <- scen.files[grep('tasmax_day_BCCAQ2',scen.files)]
+  tasmax.file <- tasmax.files[grep('1951-2000',tasmax.files)]
+  nc <- nc_open(paste0(gcm.dir,gcm,'/',tasmax.file))
+  lon <- ncvar_get(nc,'lon')
+  lat <- ncvar_get(nc,'lat')
+  lon.ix <- which.min(abs(lonc-lon))
+  lat.ix <- which.min(abs(latc-lat))
+  data.raw <- ncvar_get(nc,'tasmax',start=c(lon.ix,lat.ix,1),count=c(1,1,-1))  
+  rv <- sum(is.na(data.raw)) == length(data.raw)
+  return(rv)
+}
+
 ##------------------------------------------------------------------------------
 
 ##**************************************************************************************
 
-##scenario <- 'rcp85'
-##interval <- '2071-2100'
+scenario <- 'rcp85'
 
-##lon <- -122.36
-##lat <- 49.03
+##lon <- -123.0684
+##lat <- 49.3209
 
-##method <- 'seasonal'
-##rlen <- ''
-
-if (method!='roll') { 
-  rlen <- ''
-}
+##method <- 'roll'
+##rlen <- '21'
 
 args <- commandArgs(trailingOnly=TRUE)
 for(i in 1:length(args)){
     eval(parse(text=args[[i]]))
 }
+
+if (method!='roll') { 
+  rlen <- ''
+}
+
 print(scenario)
 print(method)
 print(rlen)
+print(infile)
 print(lon)
 print(lat)
 
-print(infile)
+epw.dir <- '/storage/data/projects/rci/weather_files/wx_2016/offsets/'
+write.dir <- '/storage/data/projects/rci/weather_files/wx_2016/morphed_files/' ##tas_only/'
 
-epw.dir <- '/storage/data/projects/rci/weather_files/wx_files/offsets/'
-write.dir <- '/storage/data/projects/rci/weather_files/wx_files/morphed_files/'
+tas.dir <- '/storage/data/climate/downscale/BCCAQ2+PRISM/high_res_downscaling/bccaq_gcm_bc_subset/'
+
 ##infile ##'CAN_BC_1st_and_Clark_offset_from_VANCOUVER-INTL-A_1108395_CWEC.epw'
 
-present.epw.file <- 'CAN_BC_UVic_residence_offset_from_VICTORIA-UNIVERSITY-CS_1018598_CWEC.epw'
-future.epw.file <- paste0('MORPHED_',toupper(method),rlen,'_TAS_CAN_BC_UVic_residence_',interval,'_CWEC.epw')
-print(future.epw.file)
+epw.files <- infile 
+
 
 full.list <- c('ACCESS1-0','CanESM2','CCSM4','CNRM-CM5','CSIRO-Mk3-6-0','GFDL-ESM2G',
               'HadGEM2-CC','HadGEM2-ES','inmcm4','MIROC5','MPI-ESM-LR','MRI-CGCM3')
 sub.list <- c('ACCESS1-0','CanESM2','CNRM-CM5','CSIRO-Mk3-6-0','GFDL-ESM2G',
               'HadGEM2-CC','HadGEM2-ES','inmcm4','MIROC5','MRI-CGCM3')
 
+tmp.dir <- '/local_temp/ssobie/epw/'
+if (!file.exists(tmp.dir)) {
+   dir.create(tmp.dir,recursive=TRUE)
+}
+
+for (gcm in full.list) {
+  ##print(paste0('Copying: ',gcm))
+  dir.create(paste0(tmp.dir,gcm,'/'))
+  scen.files <- list.files(path=paste0(tas.dir,gcm,'/'),pattern=scenario)
+  tasmax.files <- scen.files[grep('tasmax_day_BCCAQ2',scen.files)]
+  file.copy(from=paste0(tas.dir,gcm,'/',tasmax.files),to=paste0(tmp.dir,gcm,'/'),overwrite=TRUE)
+  tasmin.files <- scen.files[grep('tasmin_day_BCCAQ2',scen.files)]
+  file.copy(from=paste0(tas.dir,gcm,'/',tasmin.files),to=paste0(tmp.dir,gcm,'/'),overwrite=TRUE)
+}
+
 ##------------------------------------------------------------------------------
+intervals <- c('2011-2040','2041-2070','2071-2100')
+for (present.epw.file in epw.files) {
+  for (interval in intervals) {
+    print(interval)
+    print(present.epw.file)  
+    pef.split <- strsplit(present.epw.file,'_')[[1]]
+    print(pef.split[3])
+    future.epw.file <- paste0('MORPHED_',toupper(method),rlen,'_TAS_CAN_BC_',pef.split[3],'_',interval,'_CWEC2016.epw')
+    epw.present <- read.epw.file(epw.dir,present.epw.file) 
+    ##lat <- as.numeric(strsplit(epw.present$header[1],',')[[1]][7])
+    ##lon <- as.numeric(strsplit(epw.present$header[1],',')[[1]][8])  
+    print(lon)
+    print(lat)
+ 
+    flag <- check_for_gcm_data(lon,lat,tas.dir,'CanESM2',scenario)
+    if (flag) {
+      print('No data available for this location')
+    } else {
 
+    epw.morphed.tas <- morph_dry_bulb_temp(epw.present,
+                              lon,lat,
+                              gcm.list=full.list,
+                              gcm.dir=tmp.dir, ##'/storage/data/climate/downscale/BCCAQ2+PRISM/high_res_downscaling/bccaq_gcm_bc_subset/',##
+                              scenario,interval=interval,
+                              method=method,rlen=rlen)
+##      browser()
+    write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file) 
 
-epw.present <- read.epw.file(epw.dir,present.epw.file)
+    future.epw.file <- paste0('MORPHED_',toupper(method),rlen,'_TAS_RHS_CAN_BC_',pef.split[3],'_',interval,'_CWEC2016.epw')
 
-##Create one year of daily dates
+    epw.morphed.rhs <- generate_stretched_series(epw.morphed.tas,'relative_humidity','rhs',
+                            lon,lat,
+                            gcm.list=sub.list,
+                            gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
+                            scenario,interval=interval,
+                            method=method,rlen=rlen)
+##browser()
+    write.epw.file(epw.morphed.rhs$data,epw.morphed.rhs$header,write.dir,future.epw.file)     
 
-epw.morphed.tas <- morph_dry_bulb_temp(epw.present,
-                        lon,lat,
-                        gcm.list=full.list,
-                        gcm.dir='/storage/data/climate/downscale/BCCAQ2+PRISM/high_res_downscaling/bccaq_gcm_bc_subset/',
-                        scenario,interval=interval,
-                        method=method,rlen=rlen)
+    } ##if data available
+  }  ## for intervals
+}  ##for epw files
 
-
-write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.file)
-
-##epw.morphed.rhs <- generate_stretched_series(epw.morphed.tas,'relative_humidity','rhs',
-##                        lon,lat,
-##                        gcm.list=sub.list,
-##                        gcm.dir="/storage/data/climate/downscale/CMIP5/building_code/",
-##                        scenario,interval=interval,
-##                        method=method,rlen=rlen)
 
 
 ##epw.morphed.dwpt <- morph_dew_point_temp(epw.present,lon,lat,gcm.list,
@@ -164,3 +217,11 @@ write.epw.file(epw.morphed.tas$data,epw.morphed.tas$header,write.dir,future.epw.
 ##                        method=method,rlen=rlen)
 
 
+
+for (gcm in full.list) {
+##  scen.files <- list.files(path=paste0(tmp.dir,gcm,'/'),pattern=scenario)
+##  tasmax.files <- scen.files[grep('tasmax_day_BCCAQ2',scen.files)]
+##  file.remove(paste0(tmp.dir,gcm,'/',tasmax.files))
+##  tasmin.files <- scen.files[grep('tasmin_day_BCCAQ2',scen.files)]
+##  file.remove(paste0(tmp.dir,gcm,'/',tasmin.files))
+}

@@ -1,6 +1,4 @@
-##Script to calculate return periods from the BCCAQ data extracted from the large files
-#and write the output to a new netcdf file
-##Modified to add the confidence intervals to the resulting netcdf file
+##Script to configure raw CRCM5 humidity into a useful format.
 
 library(ncdf4)
 library(PCICt)
@@ -35,8 +33,8 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
   ##lon.ix <- 115:155
   ##lat.ix <- 85:125
   ##BC Subset
-  lon.ix <- 100:200
-  lat.ix <- 79:230
+  ##lon.ix <- 100:200
+  ##lat.ix <- 79:230
 
   new.var <- get.new.var.name(varname)                                 
 
@@ -52,7 +50,8 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
                      CanESM2='CanESM2',
                      MPI='MPI')
 
-  write.file <- paste0(new.var,'_',freq,'_BC_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
+  ###write.file <- paste0(new.var,'_',freq,'_BC_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
+write.file <- paste0(new.var,'_',freq,'_WC011_',gcm.name,'+CRCM5_historical',rcp,'_',yst,'-',yen,'.nc')
  
   ##Attributes to retain
   lon <- aperm(ncvar_get(nc,'lon'),c(2,1))
@@ -70,8 +69,8 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
   ##--------------------------------------------------------------
   ##Create new netcdf file
 
-  x.geog <- ncdim_def('rlon', 'degrees', rlon[lon.ix])
-  y.geog <- ncdim_def('rlat', 'degrees', rlat[lat.ix])
+  x.geog <- ncdim_def('rlon', 'degrees', rlon)###[lon.ix])
+  y.geog <- ncdim_def('rlat', 'degrees', rlat)###[lat.ix])
 
   t.geog <- ncdim_def('time', time.data$units, time.data$values,
                       unlim=TRUE, calendar=time.data$calendar)
@@ -127,8 +126,8 @@ make.new.netcdf.file <- function(gcm,varname,freq,rcp,
   ##Clear extraneous history
   ncatt_put(hist.nc,varid=0,attname='history',attval='')
 
-  ncvar_put(hist.nc,varid='lon',vals=lon[lon.ix,lat.ix])
-  ncvar_put(hist.nc,varid='lat',vals=lat[lon.ix,lat.ix])
+  ncvar_put(hist.nc,varid='lon',vals=lon)###[lon.ix,lat.ix])
+  ncvar_put(hist.nc,varid='lat',vals=lat)###[lon.ix,lat.ix])
 
   nc_close(hist.nc)  
   nc_close(nc)  
@@ -163,7 +162,8 @@ move.data.to.new.file <- function(gcm,varname,nc,
   ist <- ix[1]
   icnt <- tail(ix,1)-ist + 1
   ###var.subset <- ncvar_get(hist.nc,varname,start=c(85,115,22,1),count=c(41,41,1,-1))
-  var.subset <- ncvar_get(hist.nc,varname,start=c(79,100,22,1),count=c(152,101,1,-1))
+  ###var.subset <- ncvar_get(hist.nc,varname,start=c(79,100,22,1),count=c(152,101,1,-1))
+  var.subset <- ncvar_get(hist.nc,varname,start=c(1,1,22,1),count=c(-1,-1,1,-1))
 
   ncvar_put(nc,varid=new.var,vals=aperm(var.subset,c(2,1,3)),
             start=c(1,1,ist),count=c(-1,-1,icnt))     
@@ -196,9 +196,10 @@ if (1==1) {
   ##tmp.base <- tmpdir
   tmp.base <- paste('/local_temp/ssobie/crcm5/',varname,'/',sep='')
   
-  data.dir <- paste0('/storage/data/climate/downscale/CMIP5_delivery/CRCM5/MPI/',varname,'/')
-  ##data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/',varname,'/')
-  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/hourly/')
+  ##data.dir <- paste0('/storage/data/climate/downscale/CMIP5_delivery/CRCM5/MPI/',varname,'/')
+  data.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/',gcm,'/',varname,'/')
+  ###write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/bc/hourly/')
+  write.dir <- paste0('/storage/data/climate/downscale/RCM/CRCM5/reconfig/',gcm,'/')
 
   if (!file.exists(tmp.base))
        dir.create(tmp.base,recursive=TRUE)
